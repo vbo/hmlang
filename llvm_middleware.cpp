@@ -50,7 +50,8 @@ void init_builtins(CodeGenState *code_gen) {
 
 Type* get_builtin_type(CodeGenState *code_gen, Builtin::Type type_id) {
     if (type_id < 1 || type_id > Builtin::TypeLast) {
-        assert(false && "bad type on code gen");
+        assert(false && "bad builtin type on code gen");
+        return Builtin::TypeUnknown;
     }
     return code_gen->builtin_types[type_id];
 }
@@ -256,6 +257,7 @@ void code_gen_decl(CodeGenState *code_gen, AstNode *root) {
 }
 
 void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
+    // TODO: do we really need two passes per scope?
     code_gen_decl(code_gen, root);
     for (AstNode* node : root->child_nodes) {
         if (node->type == AstNode::TypeProcedureDefinition) {

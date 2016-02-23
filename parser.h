@@ -123,7 +123,7 @@ namespace parser {
 
         int parse_all(AstNode& scopeNode) {
             // Here we want to parse a whole stream
-            // and produce a ParseTree.
+            // and produce a parse tree.
             // On this point we don't know if the code makes
             // sense semantically.
             while(toki < tokens.size()) {
@@ -142,11 +142,11 @@ namespace parser {
                         if (status != 0) return status;
                         continue;
                     }
-                    printf("Parse error: unexpected token \"%s\" on line %d:%d \
-                           - was looking for top-level stuff like types and functions!\n",
-                           tok.str_content.c_str(), tok.line_number, tok.column_number);
-                    return 1;
                 }
+                printf("Parse error: unexpected token \"%s\" on line %d:%d "
+                       "- was looking for top-level stuff like types and functions!\n",
+                       tok.str_content.c_str(), tok.line_number, tok.column_number);
+                return 1;
             }
             return 0;
         }

@@ -4,8 +4,13 @@ namespace enrichment {
     void print_type_ref(AstNode* node) {
         while (true) {
             if (node->type == AstNode::TypeTypeRefName) {
-                printf("~>%s", node->name_tok->str_content.c_str());
-                break;
+                if (node->resolved_type_ref) {
+                    node = node->resolved_type_ref;
+                    continue;
+                } else {
+                    printf("~>%s", node->name_tok->str_content.c_str());
+                    break;
+                }
             } else if (node->type == AstNode::TypeTypeRefBuiltin) {
                 printf("#%s", node->name_tok->str_content.c_str());
                 break;
@@ -552,6 +557,7 @@ namespace enrichment {
     }
 
     int enrich(AstNode *root) {
+        // TODO: do we really need to do two passes for each scope?
         int status = enrich_decl(root);
         if (status != 0) return status;
         for (AstNode* node : root->child_nodes) {
@@ -570,12 +576,12 @@ namespace enrichment {
                             node->proc_return_type_ref
                         );
                         if (type_cmp_status != 0) {
-                            printf("Proc %s return type is ",
+                            printf("Type mismatch: proc %s return type is ",
                                    node->name_tok->str_content.c_str());
                             print_type_ref(node->proc_return_type_ref);
-                            printf(" but return expression has ");
+                            printf(" but return expression has type ");
                             print_type_ref(stmt_node->ret_expr->inferred_type_ref);
-                            printf(" type on line %d:%d", 
+                            printf(" on line %d:%d", 
                                    stmt_node->ret_expr->start_tok->line_number,
                                    stmt_node->ret_expr->start_tok->column_number);
                             return type_cmp_status;

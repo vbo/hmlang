@@ -87,7 +87,7 @@ namespace driver {
         int enrich_status = enrichment::enrich(&global_scope_node);
         if (enrich_status != 0) return enrich_status;
 
-#if 1
+#if 0
         printf("Enriched:\n");
         enrichment::print_ast(&global_scope_node);
         printf("\n");
