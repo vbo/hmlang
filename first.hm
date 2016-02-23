@@ -1,0 +1,14 @@
+proc* main_i32_i32_reti32(a: i32, b: i32) -> i32 {
+    v: v2;
+    v.x = a;
+    v.y = b;
+
+    tmp := v.x + v.y;
+    ret tmp;
+
+    type v2 {
+        x: i32;
+        y: i32;
+    }
+}
+
