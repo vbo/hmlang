@@ -51,7 +51,7 @@ void init_builtins(CodeGenState *code_gen) {
 Type* get_builtin_type(CodeGenState *code_gen, Builtin::Type type_id) {
     if (type_id < 1 || type_id > Builtin::TypeLast) {
         assert(false && "bad builtin type on code gen");
-        return Builtin::TypeUnknown;
+        return nullptr;
     }
     return code_gen->builtin_types[type_id];
 }
