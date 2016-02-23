@@ -25,7 +25,7 @@ if [ ! -f build/llvm_middleware.dylib ]; then
     echo "# Building LLVM middleware for the first time"
     BUILD_LLVM_MIDDLEWARE="yes"
 else
-    if [ llvm_middleware.cpp -nt build/llvm_middleware.dylib ] || [ middleware.h -nt build/llvm_middleware.dylib ]; then
+    if [ llvm_middleware.cpp -nt build/llvm_middleware.dylib ] || [ hmlang.h -nt build/llvm_middleware.dylib ]; then
         echo "# Building LLVM middleware for updated source"
         BUILD_LLVM_MIDDLEWARE="yes"
     fi

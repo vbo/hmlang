@@ -99,7 +99,9 @@ Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool declare_user_t
         } else if (node->type == AstNode::TypeTypeRefBuiltin) {
             return get_builtin_type(code_gen, node->builtin_type);
         } else if (node->type == AstNode::TypeTypeDefinition) {
-            if (declare_user_types) code_gen_type_decl(code_gen, node);
+            if (declare_user_types) {
+                code_gen_type_decl(code_gen, node);
+            }
             return (StructType *)node->code_gen_ref;
         } else {
             printf("Code gen panic: unknown type ref type %d\n", node->type);

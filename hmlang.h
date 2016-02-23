@@ -88,7 +88,6 @@ struct AstNode {
         TypeExpressionLiteralNumber,
         TypeGlobalScope,
         // TODO: do we need a separate structure for these?
-        TypeTypeRef,
         TypeTypeRefName, // turns into definition or builtin during enrichment
         TypeTypeRefBuiltin
     } type;
