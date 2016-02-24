@@ -9,6 +9,7 @@ namespace Builtin {
         I8,
         I32,
         Float32,
+        Bool,
         TypeLast
     };
     enum Op {
@@ -18,10 +19,12 @@ namespace Builtin {
         SubFloat,
         MulFloat,
         DivFloat,
+        EqFloat,
         // for two's complement code gen most integer operations are the same for signed and unsigned
         AddInt,
         SubInt,
         MulInt,
+        EqInt,
         // Integer division is different for signed and unsigned
         DivIntSigned,
         DivIntUnsigned,
@@ -29,10 +32,13 @@ namespace Builtin {
         OpLast
     };
 
+    Op ret_bool[] = {EqInt, EqFloat};
+
     std::string key_void = "void";
     std::string key_i8 = "i8";
     std::string key_i32 = "i32";
     std::string key_float32 = "float32";
+    std::string key_bool = "bool";
 }
 
 struct Token {
@@ -48,6 +54,7 @@ struct Token {
         TypeOperatorPlus,
         TypeOperatorStar,
         TypeOperatorSlash,
+        TypeOperatorDoubleEquals,
         TypeOperatorAmpersand,
         TypeComma,
         TypeArrow,

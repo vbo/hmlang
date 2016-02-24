@@ -32,6 +32,7 @@ void init_builtins(CodeGenState *code_gen) {
     code_gen->builtin_types[Builtin::I8] = Type::getInt8Ty(code_gen->ctx);
     code_gen->builtin_types[Builtin::I32] = Type::getInt32Ty(code_gen->ctx);
     code_gen->builtin_types[Builtin::Float32] = Type::getFloatTy(code_gen->ctx);
+    code_gen->builtin_types[Builtin::Bool] = Type::getInt1Ty(code_gen->ctx);
 
     {
         // TODO: read doxygen, not sure how it works
@@ -203,6 +204,8 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
                 return code_gen->ir_builder->CreateFMul(lhs, rhs);
             case Builtin::DivFloat:
                 return code_gen->ir_builder->CreateFDiv(lhs, rhs);
+            case Builtin::EqFloat:
+                return code_gen->ir_builder->CreateFCmpUEQ(lhs, rhs);
             // integer operations
             case Builtin::AddInt:
                 return code_gen->ir_builder->CreateAdd(lhs, rhs);
@@ -210,6 +213,8 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
                 return code_gen->ir_builder->CreateSub(lhs, rhs);
             case Builtin::MulInt:
                 return code_gen->ir_builder->CreateMul(lhs, rhs);
+            case Builtin::EqInt:
+                return code_gen->ir_builder->CreateICmpEQ(lhs, rhs);
             // integer signed-unsigned
             case Builtin::DivIntSigned:
                 return code_gen->ir_builder->CreateSDiv(lhs, rhs);

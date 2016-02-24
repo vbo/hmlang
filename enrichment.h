@@ -239,6 +239,8 @@ namespace enrichment {
                         return Builtin::MulFloat;
                     case Token::TypeOperatorSlash:
                         return Builtin::DivFloat;
+                    case Token::TypeOperatorDoubleEquals:
+                        return Builtin::EqFloat;
                     default:
                         return Builtin::OpUnknown;
                 }
@@ -253,6 +255,8 @@ namespace enrichment {
                         return Builtin::MulInt;
                     case Token::TypeOperatorSlash:
                         return Builtin::DivIntSigned;
+                    case Token::TypeOperatorDoubleEquals:
+                        return Builtin::EqInt;
                     default:
                         return Builtin::OpUnknown;
                 }
@@ -414,12 +418,12 @@ namespace enrichment {
                        expr->start_tok->column_number);
                 return check_status;
             }
-            expr->inferred_type_ref = expr->bin_op_lexpr->inferred_type_ref;
-            Builtin::Type operand_type = builtin_type_for_resolved_ref(expr->inferred_type_ref);
+            Builtin::Type operand_type = builtin_type_for_resolved_ref(
+                expr->bin_op_lexpr->inferred_type_ref);
             if (operand_type == Builtin::TypeUnknown) {
                 printf("Trying to apply binary operator %s to operands of user defined type: ",
                     expr->name_tok->str_content.c_str());
-                print_type_ref(expr->inferred_type_ref);
+                print_type_ref(expr->bin_op_lexpr->inferred_type_ref);
                 printf(" on line %d:%d", expr->start_tok->line_number,
                        expr->start_tok->column_number);
                 return 1;
@@ -428,10 +432,23 @@ namespace enrichment {
             if (builtin_op == Builtin::OpUnknown) {
                 printf("Can't apply binary operator %s to operands type: ",
                     expr->name_tok->str_content.c_str());
-                print_type_ref(expr->inferred_type_ref);
+                print_type_ref(expr->bin_op_lexpr->inferred_type_ref);
                 printf(" on line %d:%d", expr->start_tok->line_number,
                        expr->start_tok->column_number);
                 return 1;
+            }
+
+            bool op_returns_bool = false;
+            for (int i = 0; i < sizeof(Builtin::ret_bool)/sizeof(Builtin::ret_bool[0]); ++i) {
+                if (Builtin::ret_bool[i] == builtin_op) {
+                    op_returns_bool = true;
+                    break;
+                }
+            }
+            if (op_returns_bool) {
+                expr->inferred_type_ref = lookup_type(Builtin::key_bool, scope->parent_scope);
+            } else {
+                expr->inferred_type_ref = expr->bin_op_lexpr->inferred_type_ref;
             }
 
             expr->builtin_op = builtin_op;

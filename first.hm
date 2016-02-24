@@ -4,7 +4,8 @@ proc* main_i32_i32_reti32(a: i32, b: i32) -> i32 {
 
     vec2_init(&tmp, a, b);
 
-    *vec2_get_x_ptr(&tmp) = 50;
+    eq : bool = tmp.x == tmp.y;
+    eq1 := eq;
 
     ret tmp.x + tmp.y;
 

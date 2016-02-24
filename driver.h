@@ -35,6 +35,7 @@ namespace driver {
         synthesize_builtin_type_ast(pool, root, Builtin::I8, "i8");
         synthesize_builtin_type_ast(pool, root, Builtin::I32, "i32");
         synthesize_builtin_type_ast(pool, root, Builtin::Float32, "float32");
+        synthesize_builtin_type_ast(pool, root, Builtin::Bool, "bool");
     }
 
     int main(int argc, char **argv) {

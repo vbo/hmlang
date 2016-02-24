@@ -17,6 +17,7 @@ namespace parser {
         table[Token::TypeOperatorMinus] = 20;
         table[Token::TypeOperatorStar] = 40;
         table[Token::TypeOperatorSlash] = 40;
+        table[Token::TypeOperatorDoubleEquals] = 60;
     }
 
     struct AstNodePool {

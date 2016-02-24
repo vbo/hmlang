@@ -205,13 +205,24 @@ namespace lexer {
                         continue;
                     }
                     if (ch == '=') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeEquals;
-                        tok.str_content = "=";
-                        tokens.push_back(tok);
-                        i++;
+                        if (i + 1 < line.size() && line[i + 1] == '=') {
+                            i++;
+                            Token tok;
+                            tok.line_number = line_number;
+                            tok.column_number = i;
+                            tok.type = Token::TypeOperatorDoubleEquals;
+                            tok.str_content = "==";
+                            tokens.push_back(tok);
+                            i++;
+                        } else {
+                            Token tok;
+                            tok.line_number = line_number;
+                            tok.column_number = i + 1;
+                            tok.type = Token::TypeEquals;
+                            tok.str_content = "=";
+                            tokens.push_back(tok);
+                            i++;
+                        }
                         continue;
                     }
                     if (ch == '/') {
