@@ -45,6 +45,7 @@ proc stuff(a: float32, r: float32, v: Vector2) -> Vector2 {
     x1 := x;
     vx := v.x;
     thing := add(vx, r);
+    stuff : Vector2; // no initializer == zeroinitialize
 
     // 2) Assignment statements
     x = 7;
@@ -70,3 +71,40 @@ proc stuff(a: float32, r: float32, v: Vector2) -> Vector2 {
 proc* main_i32_i32_reti32(a: i32, b: i32) ->i32 {
     ret add(a * 100, b * 2);
 }
+
+// Pointers
+proc play_with_pointers() -> void {
+    // Language has only pass-by-value semantic. Pointers to values are values =)
+    integer : i32; // actual integer is allocated on the stack
+    pointer : i32*; // p is a pointer to i32 (initialized to null)
+
+    // You can use & to take an address of a variable
+    pointer = &integer;
+
+    // You can read the value back by dereferencing a pointer
+    integer =  *pointer;
+
+    // You can write through the pointer by assigning to dereference
+    *pointer = integer;
+
+    // Functions can take pointer arguments
+    proc modify_integer(ip: i32*) -> void {
+        *ip = 42;
+        ret void;
+    }
+
+    //modify_integer(&integer);
+
+    // Member-of operation on structure type works for pointers (no need for arrow)
+    v : Vector2;
+    p := &v;
+
+    sum := p.x + p.y;
+
+    // You can also get an address of a member like so
+    px := &v.x;
+
+    ret void;
+}
+
+

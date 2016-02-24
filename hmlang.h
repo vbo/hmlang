@@ -48,6 +48,7 @@ struct Token {
         TypeOperatorPlus,
         TypeOperatorStar,
         TypeOperatorSlash,
+        TypeOperatorAmpersand,
         TypeComma,
         TypeArrow,
         TypeSemicolon,
@@ -84,11 +85,14 @@ struct AstNode {
         TypeExpressionName,
         TypeExpressionCall,
         TypeExpressionBinOp,
+        TypeExpressionMemberOf,
+        TypeExpressionAddressOf,
         TypeExpressionDereference,
         TypeExpressionLiteralNumber,
         TypeGlobalScope,
         // TODO: do we need a separate structure for these?
-        TypeTypeRefName, // turns into definition or builtin during enrichment
+        TypeTypeRefName, // we set resolved_type_name during enrichment
+        TypeTypeRefPointer,
         TypeTypeRefBuiltin
     } type;
 
@@ -139,11 +143,20 @@ struct AstNode {
             Builtin::Op builtin_op;
             // has inferred_type_ref
         };
-        struct { // TypeExpressionDereference
-            AstNode *deref_base_var;
-            Token *deref_name_tok;
-            AstNode *deref_member;
+        struct { // TypeExpressionMemberOf
+            AstNode *memberof_base_var;
+            Token *memberof_member_name_tok;
+            AstNode *memberof_member;
             // has inferred_type_ref
+        };
+        struct { // TypeExpressionAddressOf
+            AstNode *addressof_expr;
+            // just a holder: 
+            AstNode *addressof_type_ref; // don't use if you are nor enriching!
+            // has inferred_type_ref
+        };
+        struct { // TypeExpressionDereference
+            AstNode *deref_expr;
         };
         struct { // TypeExpressionLiteralNumber,
             Token *expr_literal_number_tok;
@@ -154,6 +167,9 @@ struct AstNode {
         };
         struct { // TypeTypeRefName
             AstNode *resolved_type_ref;
+        };
+        struct { // TypeTypeRefPointer
+            AstNode *pointee_type_ref;
         };
         struct { // TypeTypeRefBuiltin
             Builtin::Type builtin_type;
@@ -167,6 +183,7 @@ struct AstNode {
     AstNode *inferred_type_ref;
     std::vector<AstNode*> child_nodes;
     std::map<std::string, std::vector<AstNode*>> child_lookup;
+    bool expr_yields_nontemporary;
 
     // used to store various kinds of code gen info =)
     void *code_gen_ref;

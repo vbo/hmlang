@@ -98,6 +98,13 @@ Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool declare_user_t
             continue;
         } else if (node->type == AstNode::TypeTypeRefBuiltin) {
             return get_builtin_type(code_gen, node->builtin_type);
+        } else if (node->type == AstNode::TypeTypeRefPointer) {
+            Type *pointee_type = get_type_by_ref(code_gen,
+                node->pointee_type_ref, declare_user_types);
+            if (pointee_type->isVoidTy()) {
+                pointee_type = Type::getInt8Ty(code_gen->ctx);
+            }
+            return PointerType::getUnqual(pointee_type);
         } else if (node->type == AstNode::TypeTypeDefinition) {
             if (declare_user_types) {
                 code_gen_type_decl(code_gen, node);
@@ -110,13 +117,20 @@ Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool declare_user_t
     }
 }
 
-Value* code_gen_dereference(CodeGenState *code_gen, AstNode *expr) {
-    if (expr->type == AstNode::TypeExpressionDereference) {
-        Value *base_addr = code_gen_dereference(code_gen, expr->deref_base_var);
+Value* get_value(CodeGenState *code_gen, AstNode *expr); // forward declare for addessof
+Value* code_gen_addressof(CodeGenState *code_gen, AstNode *expr) {
+    if (expr->type == AstNode::TypeExpressionMemberOf) {
+        AstNode *base_expr = expr->memberof_base_var;
+        Value *base_addr;
+        if (base_expr->inferred_type_ref->type == AstNode::TypeTypeRefPointer) {
+            base_addr = get_value(code_gen, base_expr);
+        } else {
+            base_addr = code_gen_addressof(code_gen, base_expr);
+        }
         std::vector<Value*> gep_indices;
         gep_indices.push_back(ConstantInt::get(Type::getInt32Ty(code_gen->ctx), 0, false));
         gep_indices.push_back(ConstantInt::get(Type::getInt32Ty(code_gen->ctx),
-                                               expr->deref_member->member_index, false));
+                                               expr->memberof_member->member_index, false));
         Value* gep = code_gen->ir_builder->CreateGEP(base_addr, gep_indices);
         return gep;
     } else if (expr->type == AstNode::TypeExpressionName) {
@@ -161,11 +175,19 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
         }
         Value * call_value = code_gen->ir_builder->CreateCall((Function *)proc->code_gen_ref, call_args);
         return call_value;
-    } else if (expr->type == AstNode::TypeExpressionDereference) {
+    } else if (expr->type == AstNode::TypeExpressionMemberOf) {
         // TODO: what about dereferencing a result of expression?
-        Value *addr = code_gen_dereference(code_gen, expr);
+        Value *addr = code_gen_addressof(code_gen, expr);
         bool is_volatile = false;
         return code_gen->ir_builder->CreateLoad(addr, is_volatile);
+    } else if (expr->type == AstNode::TypeExpressionAddressOf) {
+        Value *addr = code_gen_addressof(code_gen, expr->addressof_expr);
+        return addr;
+    } else if (expr->type == AstNode::TypeExpressionDereference) {
+        Value *addr = get_value(code_gen, expr->deref_expr);
+        bool is_volatile = false;
+        Value *deref_value = code_gen->ir_builder->CreateLoad(addr, is_volatile);
+        return deref_value;
     } else if (expr->type == AstNode::TypeExpressionBinOp) {
         assert(expr->bin_op_lexpr && expr->bin_op_rexpr && "defined for code gen");
         assert(expr->builtin_op != Builtin::OpUnknown && "for code gen");
@@ -287,13 +309,20 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
             for (AstNode *stmt_node : node->proc_body->child_nodes) {
                 if (stmt_node->type == AstNode::TypeStatementReturn) {
                     Value *ret_value = get_value(code_gen, stmt_node->ret_expr);
-                    if (ret_value) {
+                    if (ret_value && !ret_value->getType()->isVoidTy()) {
                         code_gen->ir_builder->CreateRet(ret_value);
                     } else {
                         code_gen->ir_builder->CreateRetVoid();
                     }
                 } else if (stmt_node->type == AstNode::TypeStatementAssign) {
-                    Value *addr = code_gen_dereference(code_gen, stmt_node->assign_lexpr);
+                    Value *addr;
+                    if (stmt_node->assign_lexpr->type == AstNode::TypeExpressionDereference) {
+                        addr = get_value(code_gen, stmt_node->assign_lexpr->deref_expr);
+                    } else {
+                        addr = code_gen_addressof(code_gen,
+                                                         stmt_node->assign_lexpr);
+                    }
+
                     assert(addr && "for assignment code gen");
                     Value *rvalue = get_value(code_gen, stmt_node->assign_rexpr);
                     code_gen->ir_builder->CreateStore(rvalue, addr);
@@ -313,6 +342,10 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
                             zero_value = ConstantAggregateZero::get(var_type);
                         } else if (var_type->isFloatingPointTy()) {
                             zero_value = ConstantFP::get(var_type, 0.0);
+                        } else if (var_type->isPointerTy()) {
+                            zero_value = ConstantPointerNull::get((PointerType *)var_type);
+                        } else {
+                            assert(false && "can't zero initialize type");
                         }
                         code_gen->ir_builder->CreateStore(zero_value, var_on_stack);
                     }

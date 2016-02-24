@@ -1,14 +1,19 @@
 proc* main_i32_i32_reti32(a: i32, b: i32) -> i32 {
-    v: v2;
-    v.x = a;
-    v.y = b;
-
-    tmp := v.x + v.y;
-    ret tmp;
-
-    type v2 {
+    type vec2 {
         x: i32;
         y: i32;
     }
+
+    proc vec2_init(this: vec2*, x: i32, y: i32) -> i32 {
+        this.x = x;
+        this.y = y;
+        ret 0;
+    }
+
+    tmp: vec2;
+    status := vec2_init(&tmp, 100, 61);
+
+
+    ret tmp.x + tmp.y;
 }
 

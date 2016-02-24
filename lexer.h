@@ -142,6 +142,16 @@ namespace lexer {
                         i++;
                         continue;
                     }
+                    if (ch == '&') {
+                        Token tok;
+                        tok.line_number = line_number;
+                        tok.column_number = i + 1;
+                        tok.type = Token::TypeOperatorAmpersand;
+                        tok.str_content = "&";
+                        tokens.push_back(tok);
+                        i++;
+                        continue;
+                    }
                     if (ch == '*') {
                         Token tok;
                         tok.line_number = line_number;

@@ -14,11 +14,16 @@ namespace enrichment {
             } else if (node->type == AstNode::TypeTypeRefBuiltin) {
                 printf("#%s", node->name_tok->str_content.c_str());
                 break;
+            } else if (node->type == AstNode::TypeTypeRefPointer) {
+                print_type_ref(node->pointee_type_ref);
+                printf("*");
+                break;
             } else if (node->type == AstNode::TypeTypeDefinition) {
                 printf("!%s", node->name_tok->str_content.c_str());
                 break;
             }
             printf("Don't know how to print type ref %d\n", node->type);
+            return;
         }
     }
 
@@ -124,6 +129,7 @@ namespace enrichment {
 
     // returns zero if types are equal
     int check_resolved_type_refs_equal(AstNode *a, AstNode *b) {
+        // TODO: recode this nonsense
         while (true) {
             assert(a && "type for type equality check");
             assert(b && "type for type equality check");
@@ -154,6 +160,14 @@ namespace enrichment {
                 } else {
                     return 0; // equal!
                 }
+            } else if (a->type == AstNode::TypeTypeRefPointer) {
+                if (b->type != AstNode::TypeTypeRefPointer) {
+                    return 1;
+                }
+                return check_resolved_type_refs_equal(
+                    a->pointee_type_ref,
+                    b->pointee_type_ref
+                );
             } else if (a->type == AstNode::TypeTypeDefinition) {
                 if (b->type != AstNode::TypeTypeDefinition) {
                     return 1;
@@ -198,6 +212,8 @@ namespace enrichment {
                     return nullptr;
                 }
                 continue;
+            } else if (node->type == AstNode::TypeTypeRefPointer) {
+                return user_type_for_resolved_ref(node->pointee_type_ref);
             } else if (node->type == AstNode::TypeTypeDefinition) {
                 return node;
             } else if (node->type == AstNode::TypeTypeRefBuiltin) {
@@ -246,49 +262,52 @@ namespace enrichment {
     }
 
     int resolve_type_ref(AstNode *node, AstNode *scope_node, bool disallow_void = false) {
-        while (true) {
-            if (node->type == AstNode::TypeTypeRefName) {
-                Token* type_name_tok = node->name_tok;
-                AstNode *resolved_type_node = lookup_type(
-                    type_name_tok->str_content, scope_node);
-                if (!resolved_type_node) {
-                    printf("Unresolved type %s on line %d:%d\n",
-                           type_name_tok->str_content.c_str(),
-                           type_name_tok->line_number,
-                           type_name_tok->column_number);
-                    return 1;
-                } else {
-                    // TODO: that's probably not a good place
-                    if (disallow_void) {
-                        if (resolved_type_node->type == AstNode::TypeTypeRefBuiltin &&
-                            resolved_type_node->builtin_type == Builtin::Void) {
-                            printf("Can't use void on line %d:%d\n",
-                                   node->start_tok->line_number,
-                                   node->start_tok->column_number);
-                            return 1;
-                        }
+        if (node->type == AstNode::TypeTypeRefName) {
+            Token* type_name_tok = node->name_tok;
+            AstNode *resolved_type_node = lookup_type(
+                type_name_tok->str_content, scope_node);
+            if (!resolved_type_node) {
+                printf("Unresolved type %s on line %d:%d\n",
+                       type_name_tok->str_content.c_str(),
+                       type_name_tok->line_number,
+                       type_name_tok->column_number);
+                return 1;
+            } else {
+                // TODO: that's probably not a good place
+                if (disallow_void) {
+                    if (resolved_type_node->type == AstNode::TypeTypeRefBuiltin &&
+                        resolved_type_node->builtin_type == Builtin::Void) {
+                        printf("Can't use void on line %d:%d\n",
+                               node->start_tok->line_number,
+                               node->start_tok->column_number);
+                        return 1;
                     }
-                    node->resolved_type_ref = resolved_type_node;
                 }
-                break;
-            } else if (node->type == AstNode::TypeTypeRefBuiltin) {
-                // already resolved - do nothing
-                break;
-            } else if (node->type == AstNode::TypeTypeDefinition) {
-                // already resolved - do nothing
-                break;
+                node->resolved_type_ref = resolved_type_node;
             }
-            printf("Don't know how to resolve type ref %d\n", node->type);
+            return 0;
+        } else if (node->type == AstNode::TypeTypeRefPointer) {
+            int status = resolve_type_ref(node->pointee_type_ref, scope_node);
+            if (status != 0) return status;
+            return 0;
+        } else if (node->type == AstNode::TypeTypeRefBuiltin) {
+            // already resolved - do nothing
+            return 0;
+        } else if (node->type == AstNode::TypeTypeDefinition) {
+            // already resolved - do nothing
+            return 0;
         }
-        return 0;
+        printf("Don't know how to resolve type ref %d\n", node->type);
+        return 1;
     }
 
-    int enrich_dereference(AstNode *expr, AstNode *scope) {
-        if (expr->type == AstNode::TypeExpressionDereference) {
-            int status = enrich_dereference(expr->deref_base_var, scope);
+    int enrich_expression(AstNode *expr, AstNode *scope);
+    int enrich_memberof(AstNode *expr, AstNode *scope) {
+        if (expr->type == AstNode::TypeExpressionMemberOf) {
+            int status = enrich_memberof(expr->memberof_base_var, scope);
             if (status != 0) return status;
-            AstNode *type_ref = expr->deref_base_var->inferred_type_ref;
-            string& member_name = expr->deref_name_tok->str_content;
+            AstNode *type_ref = expr->memberof_base_var->inferred_type_ref;
+            string& member_name = expr->memberof_member_name_tok->str_content;
             // TODO: what about pointers?
             AstNode *udt = user_type_for_resolved_ref(type_ref);
             if (!udt) {
@@ -301,7 +320,7 @@ namespace enrichment {
             bool found = false;
             for (AstNode *udt_member : udt->child_nodes) {
                 if (udt_member->name_tok->str_content == member_name) {
-                    expr->deref_member = udt_member;
+                    expr->memberof_member = udt_member;
                     expr->inferred_type_ref = udt_member->member_type_ref;
                     found = true;
                 }
@@ -326,7 +345,14 @@ namespace enrichment {
             }
             expr->resolved_var = variable_node;
             expr->inferred_type_ref = variable_node->var_type_ref;
+            expr->expr_yields_nontemporary = true;
             assert(variable_node->var_type_ref && "defined for looked up variable");
+            return 0;
+        } else if (expr->type == AstNode::TypeExpressionDereference) {
+            int status = enrich_expression(expr->deref_expr, scope);
+            if (status != 0) return status;
+            expr->inferred_type_ref = expr->deref_expr->
+                inferred_type_ref->pointee_type_ref;
             return 0;
         } else {
             printf("Can't enrich dereference of type %d\n", expr->type);
@@ -366,6 +392,7 @@ namespace enrichment {
                     assert(variable_node->var_type_ref && "defined for looked up variable");
                     inferred_type = variable_node->var_type_ref;
                     expr->resolved_var = variable_node;
+                    expr->expr_yields_nontemporary = true;
                 }
             }
             assert(inferred_type && "of a declared variable");
@@ -461,9 +488,37 @@ namespace enrichment {
             // But let's resolve it here just in case =)
             int resolve_ret_status = resolve_type_ref(expr->inferred_type_ref, proc_def_node->parent_scope);
             if (resolve_ret_status != 0) return resolve_ret_status;
-        } else if (expr->type == AstNode::TypeExpressionDereference) {
-            int status = enrich_dereference(expr, scope);
+        } else if (expr->type == AstNode::TypeExpressionMemberOf) {
+            int status = enrich_memberof(expr, scope);
             if (status != 0) return status;
+            expr->expr_yields_nontemporary = true;
+        } else if (expr->type == AstNode::TypeExpressionAddressOf) {
+            int status = enrich_expression(expr->addressof_expr, scope);
+            if (status != 0) return status;
+            if (expr->addressof_expr->expr_yields_nontemporary) {
+                expr->addressof_type_ref->pointee_type_ref
+                    = expr->addressof_expr->inferred_type_ref;
+                expr->inferred_type_ref = expr->addressof_type_ref;
+            } else {
+                // This is kinda lame, but to yield a useful address
+                // we need to store temporary on the stack on code gen
+                // for no good reason.
+                printf("Can't take an address of a temporary on line %d:%d\n",
+                       expr->start_tok->line_number,
+                       expr->start_tok->column_number);
+                return 1;
+            }
+        } else if (expr->type == AstNode::TypeExpressionDereference) {
+            int status = enrich_expression(expr->deref_expr, scope);
+            if (status != 0) return status;
+            if (expr->deref_expr->inferred_type_ref->type != AstNode::TypeTypeRefPointer) {
+                printf("Can't dereference a value of non-pointer type on line %d:%d\n",
+                       expr->start_tok->line_number,
+                       expr->start_tok->column_number);
+                return 1;
+            }
+            expr->inferred_type_ref = expr->deref_expr->
+                inferred_type_ref->pointee_type_ref;
         } else {
             printf("Don't know how to enrich expression of type %d on line %d:%d\n",
                    expr->type, expr->start_tok->line_number, expr->start_tok->column_number);
@@ -483,6 +538,9 @@ namespace enrichment {
                 continue;
             } else if (node->type == AstNode::TypeTypeRefBuiltin) {
                 // builtins are always finite
+                return 0;
+            } else if (node->type == AstNode::TypeTypeRefPointer) {
+                // pointers are always finite
                 return 0;
             } else if (node->type == AstNode::TypeTypeDefinition) {
                 if (node == container_type_def) {
@@ -588,7 +646,7 @@ namespace enrichment {
                         }
                         // TODO: unreachable statements (after return)
                     } else if (stmt_node->type == AstNode::TypeStatementAssign) {
-                        int status_left = enrich_dereference(stmt_node->assign_lexpr, node->proc_body);
+                        int status_left = enrich_memberof(stmt_node->assign_lexpr, node->proc_body);
                         if (status_left != 0) return status_left;
                         int status = enrich_expression(stmt_node->assign_rexpr, node->proc_body);
                         if (status != 0) return status;
