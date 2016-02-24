@@ -646,10 +646,21 @@ namespace enrichment {
                         }
                         // TODO: unreachable statements (after return)
                     } else if (stmt_node->type == AstNode::TypeStatementAssign) {
-                        int status_left = enrich_memberof(stmt_node->assign_lexpr, node->proc_body);
+                        int status_left = enrich_expression(
+                            stmt_node->assign_lexpr, node->proc_body);
                         if (status_left != 0) return status_left;
                         int status = enrich_expression(stmt_node->assign_rexpr, node->proc_body);
                         if (status != 0) return status;
+
+                        if (stmt_node->assign_lexpr->type != AstNode::TypeExpressionDereference) {
+                            if (!stmt_node->assign_lexpr->expr_yields_nontemporary) {
+                                printf("Can't assign to a temporary on line %d:%d",
+                                       stmt_node->start_tok->line_number,
+                                       stmt_node->start_tok->column_number);
+                                return 1;
+                            }
+                        }
+
                         AstNode *var_type_ref = stmt_node->assign_lexpr->inferred_type_ref;
                         AstNode *expr_type = stmt_node->assign_rexpr->inferred_type_ref;
                         int type_cmp_status = check_resolved_type_refs_equal(
@@ -705,6 +716,9 @@ namespace enrichment {
                         // skip nested procedure
                     } else if (stmt_node->type == AstNode::TypeTypeDefinition) {
                         // skip nested type
+                    } else if (stmt_node->type == AstNode::TypeStatementExpr) {
+                        int status = enrich_expression(stmt_node->stmt_expr, node->proc_body);
+                        if (status != 0) return status;
                     } else {
                         assert(false && "don't know how to enrich statement");
                     }

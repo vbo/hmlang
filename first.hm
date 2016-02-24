@@ -1,19 +1,30 @@
 proc* main_i32_i32_reti32(a: i32, b: i32) -> i32 {
+
+    tmp: vec2;
+
+    vec2_init(&tmp, a, b);
+
+    *vec2_get_x_ptr(&tmp) = 50;
+
+    ret tmp.x + tmp.y;
+
     type vec2 {
         x: i32;
         y: i32;
     }
 
-    proc vec2_init(this: vec2*, x: i32, y: i32) -> i32 {
+    proc vec2_init(this: vec2*, x: i32, y: i32) -> void {
         this.x = x;
         this.y = y;
-        ret 0;
+        ret void;
     }
 
-    tmp: vec2;
-    status := vec2_init(&tmp, 100, 61);
+    proc vec2_get_x_ptr(this: vec2*) -> i32* {
+        ret &this.x;
+    }
 
-
-    ret tmp.x + tmp.y;
+    proc vec2_identp(this: vec2*) -> vec2* {
+        ret this;
+    }
 }
 

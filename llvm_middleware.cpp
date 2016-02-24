@@ -314,6 +314,8 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
                     } else {
                         code_gen->ir_builder->CreateRetVoid();
                     }
+                } else if (stmt_node->type == AstNode::TypeStatementExpr) {
+                    Value *ignored_value = get_value(code_gen, stmt_node->stmt_expr);
                 } else if (stmt_node->type == AstNode::TypeStatementAssign) {
                     Value *addr;
                     if (stmt_node->assign_lexpr->type == AstNode::TypeExpressionDereference) {

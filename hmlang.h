@@ -82,6 +82,7 @@ struct AstNode {
         TypeProcedureBody,
         TypeStatementReturn,
         TypeStatementAssign,
+        TypeStatementExpr,
         TypeExpressionName,
         TypeExpressionCall,
         TypeExpressionBinOp,
@@ -123,6 +124,9 @@ struct AstNode {
         };
         struct { // TypeStatementReturn
             AstNode *ret_expr;
+        };
+        struct { // TypeStatementExpr
+            AstNode *stmt_expr;
         };
         struct { // TypeStatementAssign
             AstNode *assign_lexpr;
