@@ -10,6 +10,7 @@ namespace parser {
     string keywordType = "type";
     string keywordRet = "ret";
     string keywordIf = "if";
+    string keywordElse = "else";
 
     // TODO: unary operators
     // TODO: user defined operators?
@@ -375,7 +376,7 @@ namespace parser {
                     then_block.parent_scope = &parent_block_node;
                     if (tokens[toki].type == Token::TypeCurlyOpen) {
                         // TODO: duplication of block parsing logic
-                        // TODO: procdef also has it
+                        // TODO: procdef, block and else also have it
                         if (!next_tok("block continues")) return 1;
                         while(tokens[toki].type != Token::TypeCurlyClose) {
                             int status = parse_statement(then_block);
@@ -387,6 +388,26 @@ namespace parser {
                         if (then_status != 0) return then_status;
                     }
                     if_stmt_node.if_then_stmt = &then_block;
+                    if (tokens[toki].type == Token::TypeName) {
+                        if (tokens[toki].str_content == keywordElse) {
+                            if (!next_tok("statement continues")) return 1;
+                            AstNode& else_block = ast_node_pool.add(AstNode::TypeStatementBlock);
+                            else_block.start_tok = &tokens[toki];
+                            else_block.parent_scope = &parent_block_node;
+                            if (tokens[toki].type == Token::TypeCurlyOpen) {
+                                if (!next_tok("block continues")) return 1;
+                                while(tokens[toki].type != Token::TypeCurlyClose) {
+                                    int status = parse_statement(else_block);
+                                    if (status != 0) return status;
+                                }
+                                if (!next_tok("block continues")) return 1;
+                            } else {
+                                int status = parse_statement(else_block);
+                                if (status != 0) return status;
+                            }
+                            if_stmt_node.if_else_stmt = &else_block;
+                        }
+                    }
                     if (!ast_add_child(parent_block_node, if_stmt_node)) return 1;
                     return 0;
                 } else if (tokens[toki].str_content == keywordProc) {

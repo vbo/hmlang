@@ -325,11 +325,13 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
         code_gen->ir_builder->SetInsertPoint(after_if_bb);
     } else if (stmt_node->type == AstNode::TypeStatementBlock) {
         code_gen_decl(code_gen, stmt_node);
+        bool terminated = false;
         for (AstNode *sub_stmt : stmt_node->child_nodes) {
-            bool terminated = code_gen_statement(code_gen, proc_node, sub_stmt);
+            terminated = code_gen_statement(code_gen, proc_node, sub_stmt);
             if (terminated) break;
         }
         code_gen_scope(code_gen, stmt_node);
+        return terminated;
     } else if (stmt_node->type == AstNode::TypeStatementAssign) {
         Value *addr;
         if (stmt_node->assign_lexpr->type == AstNode::TypeExpressionDereference) {
@@ -381,9 +383,7 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
             code_gen_decl(code_gen, node->proc_body);
             assert(node->code_gen_ref && "set for code gen proc node");
             Function *func = (Function *)node->code_gen_ref;
-
             func->setAttributes(code_gen->default_func_attr);
-
             assert(node->proc_body && "code gen does't support external proc yet");
             BasicBlock *bb = BasicBlock::Create(code_gen->ctx, "", func);
             code_gen->ir_builder->SetInsertPoint(bb);
