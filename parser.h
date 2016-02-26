@@ -374,19 +374,8 @@ namespace parser {
                     AstNode& then_block = ast_node_pool.add(AstNode::TypeStatementBlock);
                     then_block.start_tok = &tokens[toki];
                     then_block.parent_scope = &parent_block_node;
-                    if (tokens[toki].type == Token::TypeCurlyOpen) {
-                        // TODO: duplication of block parsing logic
-                        // TODO: procdef, block and else also have it
-                        if (!next_tok("block continues")) return 1;
-                        while(tokens[toki].type != Token::TypeCurlyClose) {
-                            int status = parse_statement(then_block);
-                            if (status != 0) return status;
-                        }
-                        if (!next_tok("block continues")) return 1;
-                    } else {
-                        int then_status = parse_statement(then_block);
-                        if (then_status != 0) return then_status;
-                    }
+                    int then_status = parse_statement(then_block);
+                    if (then_status != 0) return then_status;
                     if_stmt_node.if_then_stmt = &then_block;
                     if (tokens[toki].type == Token::TypeName) {
                         if (tokens[toki].str_content == keywordElse) {
@@ -394,17 +383,8 @@ namespace parser {
                             AstNode& else_block = ast_node_pool.add(AstNode::TypeStatementBlock);
                             else_block.start_tok = &tokens[toki];
                             else_block.parent_scope = &parent_block_node;
-                            if (tokens[toki].type == Token::TypeCurlyOpen) {
-                                if (!next_tok("block continues")) return 1;
-                                while(tokens[toki].type != Token::TypeCurlyClose) {
-                                    int status = parse_statement(else_block);
-                                    if (status != 0) return status;
-                                }
-                                if (!next_tok("block continues")) return 1;
-                            } else {
-                                int status = parse_statement(else_block);
-                                if (status != 0) return status;
-                            }
+                            int status = parse_statement(else_block);
+                            if (status != 0) return status;
                             if_stmt_node.if_else_stmt = &else_block;
                         }
                     }
