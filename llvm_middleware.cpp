@@ -32,6 +32,7 @@ void init_builtins(CodeGenState *code_gen) {
     code_gen->builtin_types[Builtin::I8] = Type::getInt8Ty(code_gen->ctx);
     code_gen->builtin_types[Builtin::I32] = Type::getInt32Ty(code_gen->ctx);
     code_gen->builtin_types[Builtin::Float32] = Type::getFloatTy(code_gen->ctx);
+    // TODO: is it a good idea to use i1 here?
     code_gen->builtin_types[Builtin::Bool] = Type::getInt1Ty(code_gen->ctx);
 
     {
@@ -285,6 +286,93 @@ void code_gen_decl(CodeGenState *code_gen, AstNode *root) {
     }
 }
 
+void code_gen_scope(CodeGenState *code_gen, AstNode *root); // Forward declare for code_gen_stmt
+bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stmt_node) {
+    if (stmt_node->type == AstNode::TypeStatementReturn) {
+        Value *ret_value = get_value(code_gen, stmt_node->ret_expr);
+        if (ret_value && !ret_value->getType()->isVoidTy()) {
+            code_gen->ir_builder->CreateRet(ret_value);
+        } else {
+            code_gen->ir_builder->CreateRetVoid();
+        }
+        return true;
+    } else if (stmt_node->type == AstNode::TypeStatementExpr) {
+        Value *ignored_value = get_value(code_gen, stmt_node->stmt_expr);
+    } else if (stmt_node->type == AstNode::TypeStatementIf) {
+        Function *func = (Function *)proc_node->code_gen_ref;
+        Value *cond_value = get_value(code_gen, stmt_node->if_cond_expr);
+        BasicBlock *after_if_bb = BasicBlock::Create(
+            code_gen->ctx, "after_if", func);
+        BasicBlock *then_bb = BasicBlock::Create(
+            code_gen->ctx, "then", func, after_if_bb);
+        BasicBlock *else_bb = stmt_node->if_else_stmt ? BasicBlock::Create(
+            code_gen->ctx, "else", func, after_if_bb) : after_if_bb;
+        code_gen->ir_builder->CreateCondBr(cond_value, then_bb, else_bb);
+        code_gen->ir_builder->SetInsertPoint(then_bb);
+        bool then_terminates = code_gen_statement(
+            code_gen, proc_node, stmt_node->if_then_stmt);
+        if (!then_terminates) {
+            code_gen->ir_builder->CreateBr(after_if_bb);
+        }
+        if (stmt_node->if_else_stmt) {
+            code_gen->ir_builder->SetInsertPoint(else_bb);
+            bool else_terminates = code_gen_statement(
+                code_gen, proc_node, stmt_node->if_else_stmt);
+            if (!else_terminates) {
+                code_gen->ir_builder->CreateBr(after_if_bb);
+            }
+        }
+        code_gen->ir_builder->SetInsertPoint(after_if_bb);
+    } else if (stmt_node->type == AstNode::TypeStatementBlock) {
+        code_gen_decl(code_gen, stmt_node);
+        for (AstNode *sub_stmt : stmt_node->child_nodes) {
+            bool terminated = code_gen_statement(code_gen, proc_node, sub_stmt);
+            if (terminated) break;
+        }
+        code_gen_scope(code_gen, stmt_node);
+    } else if (stmt_node->type == AstNode::TypeStatementAssign) {
+        Value *addr;
+        if (stmt_node->assign_lexpr->type == AstNode::TypeExpressionDereference) {
+            addr = get_value(code_gen, stmt_node->assign_lexpr->deref_expr);
+        } else {
+            addr = code_gen_addressof(code_gen, stmt_node->assign_lexpr);
+        }
+        assert(addr && "for assignment code gen");
+        Value *rvalue = get_value(code_gen, stmt_node->assign_rexpr);
+        code_gen->ir_builder->CreateStore(rvalue, addr);
+    } else if (stmt_node->type == AstNode::TypeVariableDeclaration) {
+        AstNode *var_type_ref = stmt_node->var_type_ref;
+        Type *var_type = get_type_by_ref(code_gen, var_type_ref);
+        AllocaInst *var_on_stack = code_gen->ir_builder->CreateAlloca(var_type);
+        stmt_node->code_gen_ref = var_on_stack;
+        if (stmt_node->var_init_expr) {
+            Value *init_value = get_value(code_gen, stmt_node->var_init_expr);
+            code_gen->ir_builder->CreateStore(init_value, var_on_stack);
+        } else {
+            Value *zero_value;
+            if (var_type->isIntegerTy()) {
+                zero_value = ConstantInt::get(var_type, 0);
+            } else if (var_type->isAggregateType()) {
+                zero_value = ConstantAggregateZero::get(var_type);
+            } else if (var_type->isFloatingPointTy()) {
+                zero_value = ConstantFP::get(var_type, 0.0);
+            } else if (var_type->isPointerTy()) {
+                zero_value = ConstantPointerNull::get((PointerType *)var_type);
+            } else {
+                assert(false && "can't zero initialize type");
+            }
+            code_gen->ir_builder->CreateStore(zero_value, var_on_stack);
+        }
+    } else if (stmt_node->type == AstNode::TypeProcedureDefinition) {
+        // skip nested proc definition
+    } else if (stmt_node->type == AstNode::TypeTypeDefinition) {
+        // skip nested type definition
+    } else {
+        assert(false && "don't know how to code gen a stmt");
+    }
+    return false;
+}
+
 void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
     // TODO: do we really need two passes per scope?
     code_gen_decl(code_gen, root);
@@ -312,57 +400,8 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
             }
 
             for (AstNode *stmt_node : node->proc_body->child_nodes) {
-                if (stmt_node->type == AstNode::TypeStatementReturn) {
-                    Value *ret_value = get_value(code_gen, stmt_node->ret_expr);
-                    if (ret_value && !ret_value->getType()->isVoidTy()) {
-                        code_gen->ir_builder->CreateRet(ret_value);
-                    } else {
-                        code_gen->ir_builder->CreateRetVoid();
-                    }
-                } else if (stmt_node->type == AstNode::TypeStatementExpr) {
-                    Value *ignored_value = get_value(code_gen, stmt_node->stmt_expr);
-                } else if (stmt_node->type == AstNode::TypeStatementAssign) {
-                    Value *addr;
-                    if (stmt_node->assign_lexpr->type == AstNode::TypeExpressionDereference) {
-                        addr = get_value(code_gen, stmt_node->assign_lexpr->deref_expr);
-                    } else {
-                        addr = code_gen_addressof(code_gen,
-                                                         stmt_node->assign_lexpr);
-                    }
-
-                    assert(addr && "for assignment code gen");
-                    Value *rvalue = get_value(code_gen, stmt_node->assign_rexpr);
-                    code_gen->ir_builder->CreateStore(rvalue, addr);
-                } else if (stmt_node->type == AstNode::TypeVariableDeclaration) {
-                    AstNode *var_type_ref = stmt_node->var_type_ref;
-                    Type *var_type = get_type_by_ref(code_gen, var_type_ref);
-                    AllocaInst *var_on_stack = code_gen->ir_builder->CreateAlloca(var_type);
-                    stmt_node->code_gen_ref = var_on_stack;
-                    if (stmt_node->var_init_expr) {
-                        Value *init_value = get_value(code_gen, stmt_node->var_init_expr);
-                        code_gen->ir_builder->CreateStore(init_value, var_on_stack);
-                    } else {
-                        Value *zero_value;
-                        if (var_type->isIntegerTy()) {
-                            zero_value = ConstantInt::get(var_type, 0);
-                        } else if (var_type->isAggregateType()) {
-                            zero_value = ConstantAggregateZero::get(var_type);
-                        } else if (var_type->isFloatingPointTy()) {
-                            zero_value = ConstantFP::get(var_type, 0.0);
-                        } else if (var_type->isPointerTy()) {
-                            zero_value = ConstantPointerNull::get((PointerType *)var_type);
-                        } else {
-                            assert(false && "can't zero initialize type");
-                        }
-                        code_gen->ir_builder->CreateStore(zero_value, var_on_stack);
-                    }
-                } else if (stmt_node->type == AstNode::TypeProcedureDefinition) {
-                    // skip nested proc definition
-                } else if (stmt_node->type == AstNode::TypeTypeDefinition) {
-                    // skip nested type definition
-                } else {
-                    assert(false && "don't know how to code gen a stmt");
-                }
+                bool terminated = code_gen_statement(code_gen, node, stmt_node);
+                if (terminated) break;
             }
             // TODO: does verifier really does things?
             verifyFunction(*func);

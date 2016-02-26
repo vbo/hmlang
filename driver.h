@@ -20,8 +20,7 @@ namespace driver {
         Builtin::Type type,
         const char *type_name
     ) {
-        // Just allocate tokens with malloc for now - don't care!
-        Token* tok = new Token();
+        Token* tok = new Token(); // just leak that, why not?
         AstNode& node = pool.add(AstNode::TypeTypeRefBuiltin);
         node.builtin_type = type;
         tok->str_content = type_name;

@@ -87,8 +87,10 @@ struct AstNode {
         TypeProcedureDefinition,
         TypeVariableDeclaration,
         TypeProcedureBody,
+        TypeStatementIf,
         TypeStatementReturn,
         TypeStatementAssign,
+        TypeStatementBlock,
         TypeStatementExpr,
         TypeExpressionName,
         TypeExpressionCall,
@@ -125,12 +127,22 @@ struct AstNode {
             AstNode *var_init_expr;
             bool var_decl_enriched;
         };
+        // TODO: proc body and a block are the same?
         struct { // TypeProcedureBody
+            // uses child_nodes for statements
+            // has parent_scope
+        };
+        struct { // TypeStatementBlock
             // uses child_nodes for statements
             // has parent_scope
         };
         struct { // TypeStatementReturn
             AstNode *ret_expr;
+        };
+        struct { // TypeStatementIf
+            AstNode *if_cond_expr;
+            AstNode *if_then_stmt;
+            AstNode *if_else_stmt;
         };
         struct { // TypeStatementExpr
             AstNode *stmt_expr;

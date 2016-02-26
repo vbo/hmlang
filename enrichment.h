@@ -631,6 +631,161 @@ namespace enrichment {
     
     }
 
+    int enrich(AstNode *root); // forward declare to call from enrich_statement
+    int enrich_statement(
+        AstNode *proc, AstNode *parent_block,
+        AstNode *stmt_node,
+        bool& has_ret
+    ) {
+        if (stmt_node->type == AstNode::TypeStatementReturn) {
+            has_ret = true;
+            int status = enrich_expression(stmt_node->ret_expr, parent_block);
+            if (status != 0) return status;
+            // check ret type correct
+            int type_cmp_status = check_resolved_type_refs_equal(
+                stmt_node->ret_expr->inferred_type_ref,
+                proc->proc_return_type_ref
+            );
+            if (type_cmp_status != 0) {
+                printf("Type mismatch: proc %s return type is ",
+                       proc->name_tok->str_content.c_str());
+                print_type_ref(proc->proc_return_type_ref);
+                printf(" but return expression has type ");
+                print_type_ref(stmt_node->ret_expr->inferred_type_ref);
+                printf(" on line %d:%d", 
+                       stmt_node->ret_expr->start_tok->line_number,
+                       stmt_node->ret_expr->start_tok->column_number);
+                return type_cmp_status;
+            }
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeStatementIf) {
+            int cond_status = enrich_expression(
+                stmt_node->if_cond_expr, parent_block);
+            if (cond_status != 0) return cond_status;
+
+            Builtin::Type cond_type = builtin_type_for_resolved_ref(
+                stmt_node->if_cond_expr->inferred_type_ref);
+            if (cond_type != Builtin::Bool) {
+                printf("if condition should have a bool type given ");
+                print_type_ref(stmt_node->if_cond_expr->inferred_type_ref);
+                printf(" on line %d:%d", 
+                       stmt_node->if_cond_expr->start_tok->line_number,
+                       stmt_node->if_cond_expr->start_tok->column_number);
+                return 1;
+            }
+
+            bool then_has_ret = false;
+            int then_status = enrich_statement(proc, parent_block,
+                stmt_node->if_then_stmt, then_has_ret);
+            if (then_status != 0) return then_status;
+            bool else_has_ret;
+            if (stmt_node->if_else_stmt) {
+                int else_status = enrich_statement(proc, parent_block,
+                    stmt_node->if_else_stmt, else_has_ret);
+                if (else_status != 0) return else_status;
+            } else {
+                else_has_ret = false;
+            }
+            has_ret = then_has_ret && else_has_ret;
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeStatementBlock) {
+            enrich_decl(stmt_node);
+            bool block_has_ret = false;
+            for (AstNode *stmt_in_block_node : stmt_node->child_nodes) {
+                bool stmt_has_ret = false;
+                int status = enrich_statement(proc, stmt_node, stmt_in_block_node, stmt_has_ret);
+                if (status != 0) return status;
+                if (stmt_has_ret) block_has_ret = true;
+            }
+            has_ret = block_has_ret;
+            int status = enrich(stmt_node);
+            if (status != 0) return status;
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeStatementAssign) {
+            int status_left = enrich_expression(
+                stmt_node->assign_lexpr, parent_block);
+            if (status_left != 0) return status_left;
+            int status = enrich_expression(stmt_node->assign_rexpr, parent_block);
+            if (status != 0) return status;
+
+            if (stmt_node->assign_lexpr->type != AstNode::TypeExpressionDereference) {
+                if (!stmt_node->assign_lexpr->expr_yields_nontemporary) {
+                    printf("Can't assign to a temporary on line %d:%d",
+                           stmt_node->start_tok->line_number,
+                           stmt_node->start_tok->column_number);
+                    return 1;
+                }
+            }
+
+            AstNode *var_type_ref = stmt_node->assign_lexpr->inferred_type_ref;
+            AstNode *expr_type = stmt_node->assign_rexpr->inferred_type_ref;
+            int type_cmp_status = check_resolved_type_refs_equal(
+                var_type_ref, // assuming resolved for now
+                expr_type);
+            if (type_cmp_status != 0) {
+                printf("Trying to assign a value of type ");
+                print_type_ref(expr_type);
+                printf(" to a variable of type ");
+                print_type_ref(var_type_ref);
+                printf(" on line %d:%d", 
+                       stmt_node->start_tok->line_number,
+                       stmt_node->start_tok->column_number);
+                return type_cmp_status;
+            }
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeVariableDeclaration) {
+            if (stmt_node->var_init_expr) {
+                int status = enrich_expression(stmt_node->var_init_expr, parent_block);
+                if (status != 0) return status;
+            }
+            if (!stmt_node->var_type_ref) {
+                Token *name_tok = stmt_node->name_tok;
+                if (!stmt_node->var_init_expr) {
+                    printf("Type of variable %s can't be inferred without "
+                           "initializer on line %d:%d",
+                           name_tok->str_content.c_str(),
+                           name_tok->line_number,
+                           name_tok->column_number);
+                    return 1;
+                }
+                stmt_node->var_type_ref = stmt_node->var_init_expr->inferred_type_ref;
+            }
+            int resolve_status = resolve_type_ref(
+                stmt_node->var_type_ref, parent_block, true);
+            if (resolve_status != 0) return resolve_status;
+            if (stmt_node->var_init_expr) {
+                int type_cmp_status = check_resolved_type_refs_equal(
+                    stmt_node->var_type_ref,
+                    stmt_node->var_init_expr->inferred_type_ref);
+                if (type_cmp_status != 0) {
+                    printf("Trying to initialize a variable of type ");
+                    print_type_ref(stmt_node->var_type_ref);
+                    printf(" with expression of type ");
+                    print_type_ref(stmt_node->var_init_expr->inferred_type_ref);
+                    printf(" on line %d:%d", 
+                           stmt_node->start_tok->line_number,
+                           stmt_node->start_tok->column_number);
+                    return type_cmp_status;
+                }
+            }
+            stmt_node->var_decl_enriched = true;
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeProcedureDefinition) {
+            // skip nested procedure
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeTypeDefinition) {
+            // skip nested type
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeStatementExpr) {
+            int status = enrich_expression(stmt_node->stmt_expr, parent_block);
+            if (status != 0) return status;
+            return 0;
+        } else {
+            assert(false && "don't know how to enrich statement");
+            return 1;
+        }
+    }
+
     int enrich(AstNode *root) {
         // TODO: do we really need to do two passes for each scope?
         int status = enrich_decl(root);
@@ -640,105 +795,10 @@ namespace enrichment {
                 enrich_decl(node->proc_body);
                 bool has_ret = false;
                 for (AstNode *stmt_node : node->proc_body->child_nodes) {
-                    // TODO: support more statements
-                    if (stmt_node->type == AstNode::TypeStatementReturn) {
-                        has_ret = true;
-                        int status = enrich_expression(stmt_node->ret_expr, node->proc_body);
-                        if (status != 0) return status;
-                        // check ret type correct
-                        int type_cmp_status = check_resolved_type_refs_equal(
-                            stmt_node->ret_expr->inferred_type_ref,
-                            node->proc_return_type_ref
-                        );
-                        if (type_cmp_status != 0) {
-                            printf("Type mismatch: proc %s return type is ",
-                                   node->name_tok->str_content.c_str());
-                            print_type_ref(node->proc_return_type_ref);
-                            printf(" but return expression has type ");
-                            print_type_ref(stmt_node->ret_expr->inferred_type_ref);
-                            printf(" on line %d:%d", 
-                                   stmt_node->ret_expr->start_tok->line_number,
-                                   stmt_node->ret_expr->start_tok->column_number);
-                            return type_cmp_status;
-                        }
-                        // TODO: unreachable statements (after return)
-                    } else if (stmt_node->type == AstNode::TypeStatementAssign) {
-                        int status_left = enrich_expression(
-                            stmt_node->assign_lexpr, node->proc_body);
-                        if (status_left != 0) return status_left;
-                        int status = enrich_expression(stmt_node->assign_rexpr, node->proc_body);
-                        if (status != 0) return status;
-
-                        if (stmt_node->assign_lexpr->type != AstNode::TypeExpressionDereference) {
-                            if (!stmt_node->assign_lexpr->expr_yields_nontemporary) {
-                                printf("Can't assign to a temporary on line %d:%d",
-                                       stmt_node->start_tok->line_number,
-                                       stmt_node->start_tok->column_number);
-                                return 1;
-                            }
-                        }
-
-                        AstNode *var_type_ref = stmt_node->assign_lexpr->inferred_type_ref;
-                        AstNode *expr_type = stmt_node->assign_rexpr->inferred_type_ref;
-                        int type_cmp_status = check_resolved_type_refs_equal(
-                            var_type_ref, // assuming resolved for now
-                            expr_type);
-                        if (type_cmp_status != 0) {
-                            printf("Trying to assign a value of type ");
-                            print_type_ref(expr_type);
-                            printf(" to a variable of type ");
-                            print_type_ref(var_type_ref);
-                            printf(" on line %d:%d", 
-                                   stmt_node->start_tok->line_number,
-                                   stmt_node->start_tok->column_number);
-                            return type_cmp_status;
-                        }
-                    } else if (stmt_node->type == AstNode::TypeVariableDeclaration) {
-                        if (stmt_node->var_init_expr) {
-                            int status = enrich_expression(stmt_node->var_init_expr, node->proc_body);
-                            if (status != 0) return status;
-                        }
-                        if (!stmt_node->var_type_ref) {
-                            Token *name_tok = stmt_node->name_tok;
-                            if (!stmt_node->var_init_expr) {
-                                printf("Type of variable %s can't be inferred without "
-                                       "initializer on line %d:%d",
-                                       name_tok->str_content.c_str(),
-                                       name_tok->line_number,
-                                       name_tok->column_number);
-                                return 1;
-                            }
-                            stmt_node->var_type_ref = stmt_node->var_init_expr->inferred_type_ref;
-                        }
-                        int resolve_status = resolve_type_ref(
-                            stmt_node->var_type_ref, node->proc_body, true);
-                        if (resolve_status != 0) return resolve_status;
-                        if (stmt_node->var_init_expr) {
-                            int type_cmp_status = check_resolved_type_refs_equal(
-                                stmt_node->var_type_ref,
-                                stmt_node->var_init_expr->inferred_type_ref);
-                            if (type_cmp_status != 0) {
-                                printf("Trying to initialize a variable of type ");
-                                print_type_ref(stmt_node->var_type_ref);
-                                printf(" with expression of type ");
-                                print_type_ref(stmt_node->var_init_expr->inferred_type_ref);
-                                printf(" on line %d:%d", 
-                                       stmt_node->start_tok->line_number,
-                                       stmt_node->start_tok->column_number);
-                                return type_cmp_status;
-                            }
-                        }
-                        stmt_node->var_decl_enriched = true;
-                    } else if (stmt_node->type == AstNode::TypeProcedureDefinition) {
-                        // skip nested procedure
-                    } else if (stmt_node->type == AstNode::TypeTypeDefinition) {
-                        // skip nested type
-                    } else if (stmt_node->type == AstNode::TypeStatementExpr) {
-                        int status = enrich_expression(stmt_node->stmt_expr, node->proc_body);
-                        if (status != 0) return status;
-                    } else {
-                        assert(false && "don't know how to enrich statement");
-                    }
+                    bool stmt_has_ret = false;
+                    int status = enrich_statement(node, node->proc_body, stmt_node, stmt_has_ret);
+                    if (status != 0) return status;
+                    if (stmt_has_ret) has_ret = true;
                 }
                 if (!has_ret) {
                     printf("Not all code pathes in procedure %s return a value\n", node->name_tok->str_content.c_str());

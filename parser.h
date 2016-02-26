@@ -9,6 +9,7 @@ namespace parser {
     string keywordProc = "proc";
     string keywordType = "type";
     string keywordRet = "ret";
+    string keywordIf = "if";
 
     // TODO: unary operators
     // TODO: user defined operators?
@@ -328,6 +329,137 @@ namespace parser {
             return left_ref;
         }
 
+        int parse_statement(AstNode& parent_block_node) {
+            if (tokens[toki].type == Token::TypeCurlyOpen) {
+                AstNode& block_node = ast_node_pool.add(AstNode::TypeStatementBlock);
+                block_node.start_tok = &tokens[toki];
+                block_node.parent_scope = &parent_block_node;
+                if (!next_tok("block continues")) return 1;
+                while(tokens[toki].type != Token::TypeCurlyClose) {
+                    int status = parse_statement(block_node);
+                    if (status != 0) return status;
+                }
+                if (!next_tok("block continues")) return 1;
+                if (!ast_add_child(parent_block_node, block_node)) return 1;
+                return 0;
+            }
+            // check for keyword-based statements
+            if (tokens[toki].type == Token::TypeName) {
+                if (tokens[toki].str_content == keywordRet) {
+                    AstNode& ret_stmt_node = ast_node_pool.add(AstNode::TypeStatementReturn);
+                    ret_stmt_node.start_tok = &tokens[toki];
+                    if (!next_tok("return expression or semicolon")) return 1;
+                    if (!ast_add_child(parent_block_node, ret_stmt_node)) return 1;
+                    if (tokens[toki].type == Token::TypeSemicolon) {
+                        // TODO: do we want to supprt ret; wihtout expression here?
+                        printf("Expected return expression on line %d:%d\n",
+                               tokens[toki].line_number, tokens[toki].column_number);
+                        return 1;
+                    } else {
+                        AstNode *expr = parse_expression();
+                        if (!expr) return 1;
+                        ret_stmt_node.ret_expr = expr;
+                    }
+                    if (!check_tok_type(Token::TypeSemicolon, "semicolon after statement")) return 1;
+                    if (!next_tok("procedure body continues or ends")) return 1;
+                    return 0;
+                } else if (tokens[toki].str_content == keywordIf) {
+                    AstNode& if_stmt_node = ast_node_pool.add(AstNode::TypeStatementIf);
+                    if_stmt_node.start_tok = &tokens[toki];
+                    if (!next_tok("if condition expression")) return 1;
+                    AstNode *cond_expr = parse_expression();
+                    if (!cond_expr) return 1;
+                    if_stmt_node.if_cond_expr = cond_expr;
+                    AstNode& then_block = ast_node_pool.add(AstNode::TypeStatementBlock);
+                    then_block.start_tok = &tokens[toki];
+                    then_block.parent_scope = &parent_block_node;
+                    if (tokens[toki].type == Token::TypeCurlyOpen) {
+                        // TODO: duplication of block parsing logic
+                        // TODO: procdef also has it
+                        if (!next_tok("block continues")) return 1;
+                        while(tokens[toki].type != Token::TypeCurlyClose) {
+                            int status = parse_statement(then_block);
+                            if (status != 0) return status;
+                        }
+                        if (!next_tok("block continues")) return 1;
+                    } else {
+                        int then_status = parse_statement(then_block);
+                        if (then_status != 0) return then_status;
+                    }
+                    if_stmt_node.if_then_stmt = &then_block;
+                    if (!ast_add_child(parent_block_node, if_stmt_node)) return 1;
+                    return 0;
+                } else if (tokens[toki].str_content == keywordProc) {
+                    int status = parse_procedure(parent_block_node);
+                    if (status != 0) return status;
+                    return 0;
+                } else if (tokens[toki].str_content == keywordType) {
+                    int status = parse_type(parent_block_node);
+                    if (status != 0) return status;
+                    return 0;
+                }
+            }
+
+            AstNode *expr = parse_expression();
+            if (!expr) return 1;
+
+            if (tokens[toki].type != Token::TypeSemicolon) {
+                if (tokens[toki].type == Token::TypeColon) {
+                    // variable declaration
+                    if (expr->type != AstNode::TypeExpressionName) {
+                        printf("Parse error: unexpected colon after expression on line %d:%d",
+                               tokens[toki].line_number, tokens[toki].column_number);
+                        return 1;
+                    }
+                    if (!next_tok("declaration continues")) return 1;
+
+                    AstNode& node = ast_node_pool.add(AstNode::TypeVariableDeclaration);
+                    node.start_tok = expr->start_tok;
+                    node.name_tok = expr->name_tok;
+                    if (!ast_add_child(parent_block_node, node)) return 1;
+                    if (tokens[toki].type != Token::TypeEquals) {
+                        // explicit type specification
+                        AstNode *var_type_node = parse_type_ref();
+                        if (!var_type_node) return 1;
+                        node.var_type_ref = var_type_node;
+                    } else {
+                        // type should be inferred from the initializer
+                        node.var_type_ref = nullptr;
+                    }
+                    if (tokens[toki].type == Token::TypeEquals) {
+                        if (!next_tok("initializer expression")) return 1;
+                        AstNode *expr = parse_expression();
+                        if (!expr) return 1;
+                        node.var_init_expr = expr;
+                    }
+                } else if (tokens[toki].type == Token::TypeEquals) {
+                    if (!next_tok("assignment rvalue expression")) return 1;
+                    AstNode& assign_stmt_node = ast_node_pool.add(
+                        AstNode::TypeStatementAssign);
+                    assign_stmt_node.start_tok = expr->start_tok;
+                    assign_stmt_node.assign_lexpr = expr;
+                    AstNode *expr = parse_expression();
+                    if (!expr) return 1;
+                    assign_stmt_node.assign_rexpr = expr;
+                    if (!ast_add_child(parent_block_node, assign_stmt_node)) return 1;
+                } else {
+                    printf("Parse error: unexpected token %s on line %d:%d",
+                           expr->start_tok->str_content.c_str(),
+                           expr->start_tok->line_number,
+                           expr->start_tok->column_number);
+                    return 1;
+                }
+            } else {
+                AstNode& expr_stmt_node = ast_node_pool.add(AstNode::TypeStatementExpr);
+                expr_stmt_node.start_tok = expr->start_tok;
+                expr_stmt_node.stmt_expr = expr;
+                if (!ast_add_child(parent_block_node, expr_stmt_node)) return 1;
+            }
+            if (!check_tok_type(Token::TypeSemicolon, "semicolon after statement")) return 1;
+            if (!next_tok("procedure body continues or ends")) return 1;
+            return 0;
+        }
+
         int parse_procedure(AstNode& scope_node) {
             Token& start_tok = tokens[toki];
             if (!next_tok("procedure name")) return 1;
@@ -406,91 +538,8 @@ namespace parser {
             // proc body
             if (!next_tok("procedure body")) return 1;
             while (tokens[toki].type != Token::TypeCurlyClose) {
-                // check for keyword-based statements
-                if (tokens[toki].type == Token::TypeName) {
-                    if (tokens[toki].str_content == keywordRet) {
-                        AstNode& ret_stmt_node = ast_node_pool.add(AstNode::TypeStatementReturn);
-                        ret_stmt_node.start_tok = &tokens[toki];
-                        if (!next_tok("return expression or semicolon")) return 1;
-                        if (!ast_add_child(proc_body_node, ret_stmt_node)) return 1;
-                        if (tokens[toki].type == Token::TypeSemicolon) {
-                            // TODO: do we want to supprt ret; wihtout expression here?
-                            printf("Expected return expression on line %d:%d\n",
-                                   tokens[toki].line_number, tokens[toki].column_number);
-                            return 1;
-                        } else {
-                            AstNode *expr = parse_expression();
-                            if (!expr) return 1;
-                            ret_stmt_node.ret_expr = expr;
-                        }
-                        if (!check_tok_type(Token::TypeSemicolon, "semicolon after statement")) return 1;
-                        if (!next_tok("procedure body continues or ends")) return 1;
-                        continue;
-                    } else if (tokens[toki].str_content == keywordProc) {
-                        int status = parse_procedure(proc_body_node);
-                        if (status != 0) return status;
-                        continue;
-                    } else if (tokens[toki].str_content == keywordType) {
-                        int status = parse_type(proc_body_node);
-                        if (status != 0) return status;
-                        continue;
-                    }
-                }
-
-                AstNode *expr = parse_expression();
-                if (!expr) return 1;
-
-                if (tokens[toki].type != Token::TypeSemicolon) {
-                    if (tokens[toki].type == Token::TypeColon) {
-                        // variable declaration
-                        if (expr->type != AstNode::TypeExpressionName) {
-                            printf("Parse error: unexpected colon after expression on line %d:%d",
-                                   tokens[toki].line_number, tokens[toki].column_number);
-                            return 1;
-                        }
-                        if (!next_tok("declaration continues")) return 1;
-
-                        AstNode& node = ast_node_pool.add(AstNode::TypeVariableDeclaration);
-                        node.start_tok = expr->start_tok;
-                        node.name_tok = expr->name_tok;
-                        if (!ast_add_child(proc_body_node, node)) return 1;
-                        if (tokens[toki].type != Token::TypeEquals) {
-                            // explicit type specification
-                            AstNode *var_type_node = parse_type_ref();
-                            if (!var_type_node) return 1;
-                            node.var_type_ref = var_type_node;
-                        } else {
-                            // type should be inferred from the initializer
-                            node.var_type_ref = nullptr;
-                        }
-                        if (tokens[toki].type == Token::TypeEquals) {
-                            if (!next_tok("initializer expression")) return 1;
-                            AstNode *expr = parse_expression();
-                            if (!expr) return 1;
-                            node.var_init_expr = expr;
-                        }
-                    } else if (tokens[toki].type == Token::TypeEquals) {
-                        if (!next_tok("assignment rvalue expression")) return 1;
-                        AstNode& assign_stmt_node = ast_node_pool.add(
-                            AstNode::TypeStatementAssign);
-                        assign_stmt_node.start_tok = expr->start_tok;
-                        assign_stmt_node.assign_lexpr = expr;
-                        AstNode *expr = parse_expression();
-                        if (!expr) return 1;
-                        assign_stmt_node.assign_rexpr = expr;
-                        if (!ast_add_child(proc_body_node, assign_stmt_node)) return 1;
-                    } else {
-                        assert(false && "unreachable");
-                        return 1;
-                    }
-                } else {
-                    AstNode& expr_stmt_node = ast_node_pool.add(AstNode::TypeStatementExpr);
-                    expr_stmt_node.start_tok = expr->start_tok;
-                    expr_stmt_node.stmt_expr = expr;
-                    if (!ast_add_child(proc_body_node, expr_stmt_node)) return 1;
-                }
-                if (!check_tok_type(Token::TypeSemicolon, "semicolon after statement")) return 1;
-                if (!next_tok("procedure body continues or ends")) return 1;
+                int status = parse_statement(proc_body_node);
+                if (status != 0) return status;
             }
 
             if (!check_tok_type(Token::TypeCurlyClose, "closing curly")) return 1;
