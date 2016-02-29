@@ -8,7 +8,7 @@ extern "C" {
 int main(int argc, char **argv) {
     printf("\n\n");
     {
-        int32_t arg0 = 0;
+        int32_t arg0 = 2;
         int32_t arg1 = 80;
         int32_t r = main_i32_i32_reti32(arg0, arg1);
         printf("main_i32_i32_reti32(%d, %d):\n", arg0, arg1);

@@ -323,6 +323,20 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
             }
         }
         code_gen->ir_builder->SetInsertPoint(after_if_bb);
+    } else if (stmt_node->type == AstNode::TypeStatementRepeat) {
+        Function *func = (Function *)proc_node->code_gen_ref;
+        BasicBlock *after_repeat_bb = BasicBlock::Create(code_gen->ctx, "after_repeat", func);
+        stmt_node->code_gen_ref = after_repeat_bb;
+        BasicBlock *repeat_bb = BasicBlock::Create(code_gen->ctx, "repeat", func, after_repeat_bb);
+        code_gen->ir_builder->CreateBr(repeat_bb);
+        code_gen->ir_builder->SetInsertPoint(repeat_bb);
+        bool terminates = code_gen_statement(code_gen, proc_node, stmt_node->repeat_stmt);
+        if (!terminates) code_gen->ir_builder->CreateBr(repeat_bb);
+        code_gen->ir_builder->SetInsertPoint(after_repeat_bb);
+    } else if (stmt_node->type == AstNode::TypeStatementBreak) {
+        BasicBlock *break_label = (BasicBlock *)stmt_node->break_loop->code_gen_ref;
+        code_gen->ir_builder->CreateBr(break_label);
+        return true;
     } else if (stmt_node->type == AstNode::TypeStatementBlock) {
         code_gen_decl(code_gen, stmt_node);
         bool terminated = false;

@@ -88,6 +88,8 @@ struct AstNode {
         TypeVariableDeclaration,
         TypeProcedureBody,
         TypeStatementIf,
+        TypeStatementRepeat,
+        TypeStatementBreak,
         TypeStatementReturn,
         TypeStatementAssign,
         TypeStatementBlock,
@@ -143,6 +145,12 @@ struct AstNode {
             AstNode *if_cond_expr;
             AstNode *if_then_stmt;
             AstNode *if_else_stmt;
+        };
+        struct { // TypeStatementRepeat
+            AstNode *repeat_stmt;
+        };
+        struct { // TypeStatementBreak
+            AstNode *break_loop;
         };
         struct { // TypeStatementExpr
             AstNode *stmt_expr;

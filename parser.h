@@ -6,11 +6,14 @@ namespace parser {
 
     // top-level keywords
     // TODO: check Sean Barrett syntax for top level stuff - is it better?
+    // TODO: disallow name variable as keywords!
     string keywordProc = "proc";
     string keywordType = "type";
     string keywordRet = "ret";
     string keywordIf = "if";
     string keywordElse = "else";
+    string keywordRepeat = "repeat";
+    string keywordBreak = "break";
 
     // TODO: unary operators
     // TODO: user defined operators?
@@ -363,6 +366,26 @@ namespace parser {
                     }
                     if (!check_tok_type(Token::TypeSemicolon, "semicolon after statement")) return 1;
                     if (!next_tok("procedure body continues or ends")) return 1;
+                    return 0;
+                } else if (tokens[toki].str_content == keywordRepeat) {
+                    AstNode& repeat_stmt_node = ast_node_pool.add(AstNode::TypeStatementRepeat);
+                    repeat_stmt_node.start_tok = &tokens[toki];
+                    if (!next_tok("statement to repeat")) return 1;
+                    AstNode& repeat_block = ast_node_pool.add(AstNode::TypeStatementBlock);
+                    repeat_block.start_tok = &tokens[toki];
+                    repeat_block.parent_scope = &parent_block_node;
+                    int status = parse_statement(repeat_block);
+                    if (status != 0) return status;
+                    repeat_stmt_node.repeat_stmt = &repeat_block;
+                    if (!ast_add_child(parent_block_node, repeat_stmt_node)) return 1;
+                    return 0;
+                } else if (tokens[toki].str_content == keywordBreak) {
+                    AstNode& break_stmt_node = ast_node_pool.add(AstNode::TypeStatementBreak);
+                    break_stmt_node.start_tok = &tokens[toki];
+                    if (!next_tok("semicolon after break")) return 1;
+                    if (!check_tok_type(Token::TypeSemicolon, "semicolon after break")) return 1;
+                    if (!next_tok("block continues or ends")) return 1;
+                    if (!ast_add_child(parent_block_node, break_stmt_node)) return 1;
                     return 0;
                 } else if (tokens[toki].str_content == keywordIf) {
                     AstNode& if_stmt_node = ast_node_pool.add(AstNode::TypeStatementIf);

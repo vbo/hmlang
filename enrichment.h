@@ -635,6 +635,7 @@ namespace enrichment {
     int enrich_statement(
         AstNode *proc, AstNode *parent_block,
         AstNode *stmt_node,
+        AstNode *loop_node,
         bool& has_ret
     ) {
         if (stmt_node->type == AstNode::TypeStatementReturn) {
@@ -676,12 +677,12 @@ namespace enrichment {
 
             bool then_has_ret = false;
             int then_status = enrich_statement(proc, parent_block,
-                stmt_node->if_then_stmt, then_has_ret);
+                stmt_node->if_then_stmt, loop_node, then_has_ret);
             if (then_status != 0) return then_status;
             bool else_has_ret;
             if (stmt_node->if_else_stmt) {
                 int else_status = enrich_statement(proc, parent_block,
-                    stmt_node->if_else_stmt, else_has_ret);
+                    stmt_node->if_else_stmt, loop_node, else_has_ret);
                 if (else_status != 0) return else_status;
             } else {
                 else_has_ret = false;
@@ -693,13 +694,30 @@ namespace enrichment {
             bool block_has_ret = false;
             for (AstNode *stmt_in_block_node : stmt_node->child_nodes) {
                 bool stmt_has_ret = false;
-                int status = enrich_statement(proc, stmt_node, stmt_in_block_node, stmt_has_ret);
+                int status = enrich_statement(
+                    proc, stmt_node, stmt_in_block_node, loop_node, stmt_has_ret);
                 if (status != 0) return status;
                 if (stmt_has_ret) block_has_ret = true;
             }
             has_ret = block_has_ret;
             int status = enrich(stmt_node);
             if (status != 0) return status;
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeStatementRepeat) {
+            bool block_has_ret = false;
+            int status = enrich_statement(proc, parent_block,
+                stmt_node->repeat_stmt, stmt_node, block_has_ret);
+            if (status != 0) return status;
+            has_ret = false; // TODO: hast_ret for repeat block - break etc
+            return 0;
+        } else if (stmt_node->type == AstNode::TypeStatementBreak) {
+            if (!loop_node) {
+                printf("Break is only allowed inside loop on line %d:%d\n",
+                       stmt_node->start_tok->line_number,
+                       stmt_node->start_tok->column_number);
+                return 1;
+            }
+            stmt_node->break_loop = loop_node;
             return 0;
         } else if (stmt_node->type == AstNode::TypeStatementAssign) {
             int status_left = enrich_expression(
@@ -796,7 +814,8 @@ namespace enrichment {
                 bool has_ret = false;
                 for (AstNode *stmt_node : node->proc_body->child_nodes) {
                     bool stmt_has_ret = false;
-                    int status = enrich_statement(node, node->proc_body, stmt_node, stmt_has_ret);
+                    int status = enrich_statement(
+                        node, node->proc_body, stmt_node, nullptr, stmt_has_ret);
                     if (status != 0) return status;
                     if (stmt_has_ret) has_ret = true;
                 }

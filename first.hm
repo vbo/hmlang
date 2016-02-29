@@ -1,14 +1,14 @@
 proc* main_i32_i32_reti32(a: i32, b: i32) -> i32 {
-    x: i32 = b - a;
-    y := 5;
-
-    {
-        if a == 0 
-            if b == 0 {
-                x = 100;
-            } else if y == 2 x = a - b;
+    i : i32 = a;
+    repeat {
+        i = i + 1;
+        if a == 2 {
+            if i == b break;
+        } else {
+            if i == 100 break;
+        }
     }
-    
-    ret x;
+
+    ret i;
 }
 
