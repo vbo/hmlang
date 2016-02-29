@@ -84,16 +84,7 @@ void code_gen_output_result(CodeGenState *code_gen, std::string& out_buf) {
     pass_manager.run(*code_gen->module);
 }
 
-void code_gen_type_decl(CodeGenState *code_gen, AstNode *node) {
-    if (node->code_gen_ref) {
-        return; // declaration already generated!
-    }
-    StructType *struct_type = StructType::create(code_gen->ctx, node->name_tok->str_content);
-    node->code_gen_ref = struct_type;
-    node->code_gen_done = false;
-}
-
-Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool declare_user_types = false) {
+Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool gen_def = true) {
     while (true) {
         if (node->type == AstNode::TypeTypeRefName) {
             node = node->resolved_type_ref;
@@ -101,15 +92,29 @@ Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool declare_user_t
         } else if (node->type == AstNode::TypeTypeRefBuiltin) {
             return get_builtin_type(code_gen, node->builtin_type);
         } else if (node->type == AstNode::TypeTypeRefPointer) {
-            Type *pointee_type = get_type_by_ref(code_gen,
-                node->pointee_type_ref, declare_user_types);
+            Type *pointee_type = get_type_by_ref(code_gen, node->pointee_type_ref);
             if (pointee_type->isVoidTy()) {
                 pointee_type = Type::getInt8Ty(code_gen->ctx);
             }
             return PointerType::getUnqual(pointee_type);
         } else if (node->type == AstNode::TypeTypeDefinition) {
-            if (declare_user_types) {
-                code_gen_type_decl(code_gen, node);
+            if (!node->code_gen_ref) {
+                StructType *struct_type = StructType::create(code_gen->ctx, node->name_tok->str_content);
+                node->code_gen_ref = struct_type;
+                node->code_gen_done = false;
+            }
+            if (!node->code_gen_done && gen_def) {
+                StructType *struct_type = (StructType *)node->code_gen_ref;
+                std::vector<Type*> member_types;
+                member_types.reserve(node->child_nodes.size());
+                for (AstNode *member : node->child_nodes) {
+                    AstNode *member_type_ref = member->member_type_ref;
+                    Type *code_gen_type = get_type_by_ref(code_gen, member_type_ref, false);
+                    member_types.push_back(code_gen_type);
+                }
+                bool is_opaque = false;
+                struct_type->setBody(member_types, is_opaque);
+                node->code_gen_done = true;
             }
             return (StructType *)node->code_gen_ref;
         } else {
@@ -117,6 +122,31 @@ Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool declare_user_t
             assert(false && "unreachable");
         }
     }
+}
+
+Function *get_func_for_proc(CodeGenState *code_gen, AstNode *proc_node) {
+    if (!proc_node->code_gen_ref) {
+        std::string& proc_name = proc_node->name_tok->str_content;
+        AstNode *type_ref = proc_node->proc_return_type_ref;
+        Type *ret_type = get_type_by_ref(code_gen, type_ref);
+        std::vector<Type *> arg_types;
+        arg_types.reserve(proc_node->child_nodes.size());
+        for (AstNode *arg_node : proc_node->child_nodes) {
+            AstNode *arg_type_ref = arg_node->var_type_ref;
+            Type *arg_type = get_type_by_ref(code_gen, arg_type_ref);
+            arg_types.push_back(arg_type);
+        }
+        bool is_var_arg = false;
+        auto linkage = proc_node->is_public? Function::ExternalLinkage : Function::PrivateLinkage;
+        FunctionType *func_type = FunctionType::get(ret_type, arg_types, is_var_arg);
+        std::string& func_name = proc_name;
+        // TODO: Should nounwind and stuff be added here or on the definition?
+        Function *func = llvm::Function::Create(
+            func_type, linkage, func_name, code_gen->module);
+        proc_node->code_gen_ref = func;
+    }
+    assert(proc_node->code_gen_ref && "set for code gen proc node");
+    return (Function *)(proc_node->code_gen_ref);
 }
 
 Value* get_value(CodeGenState *code_gen, AstNode *expr); // forward declare for addessof
@@ -169,13 +199,13 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
     } else if (expr->type == AstNode::TypeExpressionCall) {
         // assuming func decl is already built
         AstNode *proc = expr->call_proc_def;
-        assert(proc && proc->code_gen_ref && "defined for call code gen");
+        Function *func = get_func_for_proc(code_gen, proc);
         std::vector<llvm::Value *> call_args;
         call_args.reserve(expr->child_nodes.size());
         for (AstNode *arg_expr : expr->child_nodes) {
             call_args.push_back(get_value(code_gen, arg_expr));
         }
-        Value * call_value = code_gen->ir_builder->CreateCall((Function *)proc->code_gen_ref, call_args);
+        Value * call_value = code_gen->ir_builder->CreateCall(func, call_args);
         return call_value;
     } else if (expr->type == AstNode::TypeExpressionMemberOf) {
         // TODO: what about dereferencing a result of expression?
@@ -236,58 +266,10 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
     }
 }
 
-void code_gen_decl(CodeGenState *code_gen, AstNode *root) {
-    for (AstNode* node : root->child_nodes) {
-        if (node->type == AstNode::TypeProcedureDefinition) {
-            if (node->code_gen_ref) {
-                // declaration already generated!
-                continue;
-            }
-            std::string& proc_name = node->name_tok->str_content;
-            AstNode *type_ref = node->proc_return_type_ref;
-            Type *ret_type = get_type_by_ref(code_gen, type_ref, true);
-            std::vector<Type *> arg_types;
-            arg_types.reserve(node->child_nodes.size());
-            for (AstNode *arg_node : node->child_nodes) {
-                AstNode *arg_type_ref = arg_node->var_type_ref;
-                Type *arg_type = get_type_by_ref(code_gen, arg_type_ref, true);
-                arg_types.push_back(arg_type);
-            }
-            bool is_var_arg = false;
-            auto linkage = node->is_public? Function::ExternalLinkage : Function::PrivateLinkage;
-            FunctionType *func_type = FunctionType::get(ret_type, arg_types, is_var_arg);
-            std::string& func_name = proc_name; // TODO: namespaces in LLVM IR
-            // TODO: nounwind and stuff
-            Function *func = llvm::Function::Create(
-                func_type, linkage, func_name, code_gen->module);
-            if (node->is_public) {
-                func->setCallingConv(CallingConv::C);
-            }
-            node->code_gen_ref = func;
-            continue;
-        }
-        if (node->type == AstNode::TypeTypeDefinition) {
-            code_gen_type_decl(code_gen, node);
-            if (!node->code_gen_done) {
-                StructType *struct_type = (StructType *)node->code_gen_ref;
-                std::vector<Type*> member_types;
-                member_types.reserve(node->child_nodes.size());
-                for (AstNode *member : node->child_nodes) {
-                    AstNode *member_type_ref = member->member_type_ref;
-                    Type *code_gen_type = get_type_by_ref(code_gen, member_type_ref, true);
-                    member_types.push_back(code_gen_type);
-                }
-                bool is_opaque = false;
-                struct_type->setBody(member_types, is_opaque);
-                node->code_gen_done = true;
-            }
-            continue;
-        }
-    }
-}
-
 void code_gen_scope(CodeGenState *code_gen, AstNode *root); // Forward declare for code_gen_stmt
 bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stmt_node) {
+    Function *func = (Function *)proc_node->code_gen_ref;
+    assert(func && "func decl already created when coding body");
     if (stmt_node->type == AstNode::TypeStatementReturn) {
         Value *ret_value = get_value(code_gen, stmt_node->ret_expr);
         if (ret_value && !ret_value->getType()->isVoidTy()) {
@@ -299,7 +281,6 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
     } else if (stmt_node->type == AstNode::TypeStatementExpr) {
         Value *ignored_value = get_value(code_gen, stmt_node->stmt_expr);
     } else if (stmt_node->type == AstNode::TypeStatementIf) {
-        Function *func = (Function *)proc_node->code_gen_ref;
         Value *cond_value = get_value(code_gen, stmt_node->if_cond_expr);
         BasicBlock *after_if_bb = BasicBlock::Create(
             code_gen->ctx, "after_if", func);
@@ -324,7 +305,6 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
         }
         code_gen->ir_builder->SetInsertPoint(after_if_bb);
     } else if (stmt_node->type == AstNode::TypeStatementRepeat) {
-        Function *func = (Function *)proc_node->code_gen_ref;
         BasicBlock *after_repeat_bb = BasicBlock::Create(code_gen->ctx, "after_repeat", func);
         stmt_node->code_gen_ref = after_repeat_bb;
         BasicBlock *repeat_bb = BasicBlock::Create(code_gen->ctx, "repeat", func, after_repeat_bb);
@@ -338,7 +318,6 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
         code_gen->ir_builder->CreateBr(break_label);
         return true;
     } else if (stmt_node->type == AstNode::TypeStatementBlock) {
-        code_gen_decl(code_gen, stmt_node);
         bool terminated = false;
         for (AstNode *sub_stmt : stmt_node->child_nodes) {
             terminated = code_gen_statement(code_gen, proc_node, sub_stmt);
@@ -390,13 +369,9 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
 }
 
 void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
-    // TODO: do we really need two passes per scope?
-    code_gen_decl(code_gen, root);
     for (AstNode* node : root->child_nodes) {
         if (node->type == AstNode::TypeProcedureDefinition) {
-            code_gen_decl(code_gen, node->proc_body);
-            assert(node->code_gen_ref && "set for code gen proc node");
-            Function *func = (Function *)node->code_gen_ref;
+            Function *func = get_func_for_proc(code_gen, node);;
             func->setAttributes(code_gen->default_func_attr);
             assert(node->proc_body && "code gen does't support external proc yet");
             BasicBlock *bb = BasicBlock::Create(code_gen->ctx, "", func);
@@ -423,7 +398,7 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
             continue;
         }
         if (node->type == AstNode::TypeTypeDefinition) {
-            // Already defined in code_gen_decl
+            // ignore: coded as we go
             continue;
         }
     }

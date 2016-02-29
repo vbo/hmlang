@@ -82,7 +82,8 @@ namespace driver {
 #endif
 
         // On this point code does make sense syntactically,
-        // but references types and procedures by name.
+        // but references types and procedures by name and
+        // lacks some information required to do code_gen on it.
         printf("Enrichment...\n");
         int enrich_status = enrichment::enrich_all(&global_scope_node);
         if (enrich_status != 0) return enrich_status;
