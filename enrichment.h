@@ -265,6 +265,7 @@ namespace enrichment {
         }
     }
 
+    int check_resolved_type_ref_finite(AstNode *node, AstNode *container_type_def);
     int resolve_type_ref(AstNode *node, AstNode *scope_node, bool disallow_void = false) {
         if (node->type == AstNode::TypeTypeRefName) {
             Token* type_name_tok = node->name_tok;
@@ -277,6 +278,9 @@ namespace enrichment {
                        type_name_tok->column_number);
                 return 1;
             } else {
+                int status = resolve_type_ref(
+                    resolved_type_node, scope_node, disallow_void);
+                if (status != 0) return status;
                 // TODO: that's probably not a good place
                 if (disallow_void) {
                     if (resolved_type_node->type == AstNode::TypeTypeRefBuiltin &&
@@ -298,12 +302,77 @@ namespace enrichment {
             // already resolved - do nothing
             return 0;
         } else if (node->type == AstNode::TypeTypeDefinition) {
+            if (!node->type_def_members_enrichment_done) {
+                node->type_def_members_enrichment_done = true;
+                int member_index = 0;
+                for (AstNode* member_node : node->child_nodes) {
+                    assert(member_node->type == AstNode::TypeTypeMember);
+                    int resolve_member_status = resolve_type_ref(
+                        member_node->member_type_ref, node->parent_scope, true);
+                    if (resolve_member_status != 0) return resolve_member_status;
+                    int finiteness_check_status = check_resolved_type_ref_finite(
+                        member_node->member_type_ref, node);
+                    if (finiteness_check_status != 0) {
+                        printf("  as a member %s on line %d:%d\n",
+                               member_node->name_tok->str_content.c_str(),
+                               member_node->start_tok->line_number,
+                               member_node->start_tok->column_number);
+                        return finiteness_check_status;
+                    }
+                    member_node->member_index = member_index;
+                    member_index++;
+                }
+            }
             // already resolved - do nothing
             return 0;
         }
         printf("Don't know how to resolve type ref %d\n", node->type);
         assert(false && "unreachable");
         return 1;
+    }
+
+    int check_resolved_type_ref_finite(AstNode *node, AstNode *container_type_def) {
+        while (true) {
+            if (node->type == AstNode::TypeTypeRefName) {
+                if (!node->resolved_type_ref) {
+                    assert(false && "is it unresolved type?");
+                    return 1;
+                }
+                node = node->resolved_type_ref;
+                continue;
+            } else if (node->type == AstNode::TypeTypeRefBuiltin) {
+                // builtins are always finite
+                return 0;
+            } else if (node->type == AstNode::TypeTypeRefPointer) {
+                // pointers are always finite
+                return 0;
+            } else if (node->type == AstNode::TypeTypeDefinition) {
+                if (node == container_type_def) {
+                    printf("Infinite type %s includes itself\n",
+                           container_type_def->name_tok->str_content.c_str());
+                    return 1;
+                } else {
+                    for (AstNode *member : node->child_nodes) {
+                        int resolve_member_status = resolve_type_ref(
+                            member->member_type_ref, node->parent_scope, true);
+                        if (resolve_member_status != 0) return resolve_member_status;
+                        int member_finiteness_status = check_resolved_type_ref_finite(
+                            member->member_type_ref, container_type_def);
+                        if (member_finiteness_status != 0) {
+                            printf("  when referenced from type %s on line %d:%d\n",
+                                   node->name_tok->str_content.c_str(),
+                                   member->start_tok->line_number,
+                                   member->start_tok->column_number);
+                            return member_finiteness_status;
+                        }
+                    }
+                    return 0;
+                }
+            }
+            printf("Don't know how to check finiteness of type ref %d\n", node->type);
+            return 1;
+        }
+        return 563;
     }
 
     int enrich_expression(AstNode *expr, AstNode *scope);
@@ -546,50 +615,6 @@ namespace enrichment {
         return 0;
     }
 
-    int check_resolved_type_ref_finite(AstNode *node, AstNode *container_type_def) {
-        while (true) {
-            if (node->type == AstNode::TypeTypeRefName) {
-                if (!node->resolved_type_ref) {
-                    assert(false && "is it unresolved type?");
-                    return 1;
-                }
-                node = node->resolved_type_ref;
-                continue;
-            } else if (node->type == AstNode::TypeTypeRefBuiltin) {
-                // builtins are always finite
-                return 0;
-            } else if (node->type == AstNode::TypeTypeRefPointer) {
-                // pointers are always finite
-                return 0;
-            } else if (node->type == AstNode::TypeTypeDefinition) {
-                if (node == container_type_def) {
-                    printf("Infinite type %s includes itself\n",
-                           container_type_def->name_tok->str_content.c_str());
-                    return 1;
-                } else {
-                    for (AstNode *member : node->child_nodes) {
-                        int resolve_member_status = resolve_type_ref(
-                            member->member_type_ref, node->parent_scope, true);
-                        if (resolve_member_status != 0) return resolve_member_status;
-                        int member_finiteness_status = check_resolved_type_ref_finite(
-                            member->member_type_ref, container_type_def);
-                        if (member_finiteness_status != 0) {
-                            printf("  when referenced from type %s on line %d:%d\n",
-                                   node->name_tok->str_content.c_str(),
-                                   member->start_tok->line_number,
-                                   member->start_tok->column_number);
-                            return member_finiteness_status;
-                        }
-                    }
-                    return 0;
-                }
-            }
-            printf("Don't know how to check finiteness of type ref %d\n", node->type);
-            return 1;
-        }
-        return 563;
-    }
-
     int enrich_scope(AstNode *root); // forward declare to call from enrich_statement
     int enrich_statement(
         AstNode *proc, AstNode *parent_block,
@@ -794,24 +819,7 @@ namespace enrichment {
                 int status = enrich_scope(node->proc_body);
                 if (status != 0) return status;
             } else if (node->type == AstNode::TypeTypeDefinition) {
-                int member_index = 0;
-                for (AstNode* member_node : node->child_nodes) {
-                    assert(member_node->type == AstNode::TypeTypeMember);
-                    int resolve_member_status = resolve_type_ref(
-                        member_node->member_type_ref, node->parent_scope, true);
-                    if (resolve_member_status != 0) return resolve_member_status;
-                    int finiteness_check_status = check_resolved_type_ref_finite(
-                        member_node->member_type_ref, node);
-                    if (finiteness_check_status != 0) {
-                        printf("  as a member %s on line %d:%d\n",
-                               member_node->name_tok->str_content.c_str(),
-                               member_node->start_tok->line_number,
-                               member_node->start_tok->column_number);
-                        return finiteness_check_status;
-                    }
-                    member_node->member_index = member_index;
-                    member_index++;
-                }
+                // ignore: enriched as we go
             }
         }
         return 0;

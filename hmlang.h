@@ -110,6 +110,7 @@ struct AstNode {
 
     union {
         struct { // TypeTypeDefinition
+            bool type_def_members_enrichment_done;
             // uses child_nodes for members
             // has parent_scope
         };

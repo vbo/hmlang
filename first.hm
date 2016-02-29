@@ -4,8 +4,8 @@ proc* main_i32_i32_reti32(a: i32, b: i32) -> i32 {
     v.x = 1;
     ret v.x + v.y + a + b;
 
-}
     type Vector2 {
         x: i32;
         y: i32;
     }
+}
