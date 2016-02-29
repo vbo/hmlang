@@ -84,7 +84,7 @@ namespace driver {
         // On this point code does make sense syntactically,
         // but references types and procedures by name.
         printf("Enrichment...\n");
-        int enrich_status = enrichment::enrich(&global_scope_node);
+        int enrich_status = enrichment::enrich_all(&global_scope_node);
         if (enrich_status != 0) return enrich_status;
 
 #if 0
