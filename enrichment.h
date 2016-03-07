@@ -1,5 +1,6 @@
 namespace enrichment {
     using std::string;
+    using errors::report_error;
 
     int enrich_scope(AstNode *root);
     int enrich_statement(
@@ -295,10 +296,8 @@ namespace enrichment {
             AstNode *resolved_type_node = lookup_type(
                 type_name_tok->str_content, scope_node);
             if (!resolved_type_node) {
-                printf("Unresolved type %s on line %d:%d\n",
-                       type_name_tok->str_content.c_str(),
-                       type_name_tok->line_number,
-                       type_name_tok->column_number);
+                report_error(type_name_tok, "error: unresolved type ");
+                printf("%s\n", type_name_tok->str_content.c_str());
                 return 1;
             } else {
                 int status = resolve_type_ref(
@@ -308,9 +307,7 @@ namespace enrichment {
                 if (disallow_void) {
                     if (resolved_type_node->type == AstNode::TypeTypeRefBuiltin &&
                         resolved_type_node->builtin_type == Builtin::Void) {
-                        printf("Can't use void on line %d:%d\n",
-                               node->start_tok->line_number,
-                               node->start_tok->column_number);
+                        report_error(node, "error: can't use void here\n");
                         return 1;
                     }
                 }
@@ -354,10 +351,9 @@ namespace enrichment {
                 int finiteness_check_status = check_resolved_type_ref_finite(
                     member_node->member_type_ref, node);
                 if (finiteness_check_status != 0) {
-                    printf("  as a member %s on line %d:%d\n",
-                           member_node->name_tok->str_content.c_str(),
-                           member_node->start_tok->line_number,
-                           member_node->start_tok->column_number);
+                    report_error(member_node, " ... ");
+                    printf("through the member %s\n",
+                           member_node->name_tok->str_content.c_str());
                     return finiteness_check_status;
                 }
                 member_node->member_index = member_index;
@@ -384,7 +380,8 @@ namespace enrichment {
                 return 0;
             } else if (node->type == AstNode::TypeTypeDefinition) {
                 if (node == container_type_def) {
-                    printf("Infinite type %s includes itself\n",
+                    report_error(container_type_def, "error: infinite type ");
+                    printf("%s depends on itself\n",
                            container_type_def->name_tok->str_content.c_str());
                     return 1;
                 } else {
@@ -395,10 +392,10 @@ namespace enrichment {
                         int member_finiteness_status = check_resolved_type_ref_finite(
                             member->member_type_ref, container_type_def);
                         if (member_finiteness_status != 0) {
-                            printf("  when referenced from type %s on line %d:%d\n",
-                                   node->name_tok->str_content.c_str(),
-                                   member->start_tok->line_number,
-                                   member->start_tok->column_number);
+                            report_error(member, " ... ");
+                            printf("through the member %s of %s\n",
+                                   member->name_tok->str_content.c_str(),
+                                   node->name_tok->str_content.c_str());
                             return member_finiteness_status;
                         }
                     }
@@ -406,6 +403,7 @@ namespace enrichment {
                 }
             }
             printf("Don't know how to check finiteness of type ref %d\n", node->type);
+            assert(false && "unreachable");
             return 1;
         }
         return 563;
@@ -438,8 +436,8 @@ namespace enrichment {
             }
             if (!has_ret) {
                 // TODO: this is not tested well and probably doesn't work :)
-                printf("Not all code pathes in procedure %s return a value\n",
-                       node->name_tok->str_content.c_str());
+                report_error(node, "error: not all code pathes return a value ");
+                printf("in procedure %s\n", node->name_tok->str_content.c_str());
                 return 1;
             }
             // nested definitions
@@ -459,10 +457,8 @@ namespace enrichment {
             // TODO: what about pointers?
             AstNode *udt = user_type_for_resolved_ref(type_ref);
             if (!udt) {
-                printf("Can't dereference member %s of a builtin type on line %d:%d\n",
-                       member_name.c_str(),
-                       expr->start_tok->line_number,
-                       expr->start_tok->column_number);
+                report_error(expr, "error: can't dereference a member ");
+                printf("%s of a builtin type\n", member_name.c_str());
                 return 1;
             }
             bool found = false;
@@ -476,10 +472,10 @@ namespace enrichment {
                 }
             }
             if (!found) {
-                printf("Can't dereference member %s of type ", member_name.c_str());
+                report_error(expr, "error: can't dereference an undefined member ");
+                printf("%s of type ", member_name.c_str());
                 print_type_ref(type_ref);
-                printf(" on line %d:%d",
-                       expr->start_tok->line_number, expr->start_tok->column_number);
+                printf("\n");
                 return 1;
             }
             return 0;
@@ -487,8 +483,8 @@ namespace enrichment {
             string& name = expr->name_tok->str_content;
             AstNode *variable_node = lookup_variable(name, scope);
             if (variable_node == nullptr) {
-                printf("Use of undeclared variable %s on line %d:%d\n",
-                       name.c_str(), expr->start_tok->line_number, expr->start_tok->column_number);
+                report_error(expr, "error: use of undeclared variable ");
+                printf("%s\n", name.c_str());
                 return 1;
             }
             expr->resolved_var = variable_node;
@@ -505,6 +501,7 @@ namespace enrichment {
             return 0;
         } else {
             printf("Can't enrich dereference of type %d\n", expr->type);
+            assert(false && "unreachable");
             return 1;
         }
     }
@@ -532,8 +529,8 @@ namespace enrichment {
                 // TODO: variable type might not be resolved yet when we have real variables
                 // do we want to resolve it here or up the stack?
                 if (variable_node == nullptr) {
-                    printf("Use of undeclared variable %s on line %d:%d\n", name.c_str(),
-                        expr->start_tok->line_number, expr->start_tok->column_number);
+                    report_error(expr, "error: use of undeclared variable ");
+                    printf("%s\n", name.c_str());
                     return 1;
                 } else {
                     assert(variable_node->var_type_ref && "defined for looked up variable");
@@ -552,32 +549,29 @@ namespace enrichment {
             int check_status = check_resolved_type_refs_equal(
                 expr->bin_op_lexpr->inferred_type_ref, expr->bin_op_rexpr->inferred_type_ref);
             if (check_status != 0) {
-                printf("Trying to apply binary operator %s to operands of different types: ",
-                    expr->name_tok->str_content.c_str());
+                report_error(expr, "error: trying to apply a binary operator ");
+                printf("%s to operands of different types: ", expr->name_tok->str_content.c_str());
                 print_type_ref(expr->bin_op_lexpr->inferred_type_ref);
                 printf(" and ");
                 print_type_ref(expr->bin_op_rexpr->inferred_type_ref);
-                printf(" on line %d:%d", expr->start_tok->line_number,
-                       expr->start_tok->column_number);
+                printf("\n");
                 return check_status;
             }
             Builtin::Type operand_type = builtin_type_for_resolved_ref(
                 expr->bin_op_lexpr->inferred_type_ref);
             if (operand_type == Builtin::TypeUnknown) {
-                printf("Trying to apply binary operator %s to operands of user defined type: ",
-                    expr->name_tok->str_content.c_str());
+                report_error(expr, "error: trying to apply a binary operator ");
+                printf("%s to operands of user defined type: ", expr->name_tok->str_content.c_str());
                 print_type_ref(expr->bin_op_lexpr->inferred_type_ref);
-                printf(" on line %d:%d", expr->start_tok->line_number,
-                       expr->start_tok->column_number);
+                printf("\n");
                 return 1;
             }
             Builtin::Op builtin_op = builtin_op_for_tok(expr->name_tok->type, operand_type);
             if (builtin_op == Builtin::OpUnknown) {
-                printf("Can't apply binary operator %s to operands type: ",
-                    expr->name_tok->str_content.c_str());
+                report_error(expr, "error: can't apply binary operator ");
+                printf("%s to operands of type: ", expr->name_tok->str_content.c_str());
                 print_type_ref(expr->bin_op_lexpr->inferred_type_ref);
-                printf(" on line %d:%d", expr->start_tok->line_number,
-                       expr->start_tok->column_number);
+                printf("\n");
                 return 1;
             }
             bool op_returns_bool = false;
@@ -600,8 +594,8 @@ namespace enrichment {
             // and ret types are resolved here
             AstNode *proc_def_node = lookup_procedure(name, scope);
             if (proc_def_node == nullptr) {
-                printf("Trying to call undeclared procedure %s on line %d:%d\n", name.c_str(),
-                    expr->start_tok->line_number, expr->start_tok->column_number);
+                report_error(expr, "error: trying to call an undeclared procedure ");
+                printf("%s\n", name.c_str());
                 return 1;
             }
             int proc_status = enrich_proc_definition(proc_def_node);
@@ -614,10 +608,11 @@ namespace enrichment {
             }
             // TODO: default arguments?
             if (expr->child_nodes.size() != proc_def_node->child_nodes.size()) {
-                printf("Procedure %s takes %lu arguments, "
-                       "%lu arguments given for call on line %d:%d", name.c_str(),
-                       proc_def_node->child_nodes.size(), expr->child_nodes.size(),
-                       expr->start_tok->line_number, expr->start_tok->column_number);
+                report_error(expr, "error: incorrect procedure call\n");
+                report_error(proc_def_node, " ... ");
+                printf("%s takes %lu arguments "
+                       "(%lu given)\n", name.c_str(),
+                       proc_def_node->child_nodes.size(), expr->child_nodes.size());
                 return 1;
             }
             // make sure argument types make sense, we treat call args and decl args as a parallel
@@ -632,14 +627,13 @@ namespace enrichment {
                 if (decl_arg_resolve_status != 0) return decl_arg_resolve_status;
                 int check_status = check_resolved_type_refs_equal(call_arg_type, decl_arg_type);
                 if (check_status != 0) {
-                    printf("Type ");
+                    report_error(expr, "error: incorrect procedure call: ");
+                    printf("type ");
                     print_type_ref(decl_arg_type);
                     printf(" expected, given ");
                     print_type_ref(call_arg_type);
-                    printf(" for argument %lu when calling %s on line %d:%d",
-                           argi + 1, name.c_str(),
-                           expr->start_tok->line_number,
-                           expr->start_tok->column_number);
+                    printf(" for argument %lu when calling %s\n", argi + 1, name.c_str());
+                    report_error(proc_def_node, " <-- procedure defined here\n");
                     return check_status;
                 }
             }
@@ -665,18 +659,14 @@ namespace enrichment {
                 // This is kinda lame, but to yield a useful address
                 // we need to store temporary on the stack on code gen
                 // for no good reason.
-                printf("Can't take an address of a temporary on line %d:%d\n",
-                       expr->start_tok->line_number,
-                       expr->start_tok->column_number);
+                report_error(expr, "error: can't take an address of a temporary\n");
                 return 1;
             }
         } else if (expr->type == AstNode::TypeExpressionDereference) {
             int status = enrich_expression(expr->deref_expr, scope);
             if (status != 0) return status;
             if (expr->deref_expr->inferred_type_ref->type != AstNode::TypeTypeRefPointer) {
-                printf("Can't dereference a value of non-pointer type on line %d:%d\n",
-                       expr->start_tok->line_number,
-                       expr->start_tok->column_number);
+                report_error(expr, "error: can't dereference a value of a non-pointer type\n");
                 return 1;
             }
             expr->inferred_type_ref = expr->deref_expr->inferred_type_ref->pointee_type_ref;
@@ -687,8 +677,8 @@ namespace enrichment {
             // containing the return value.
             expr->inferred_type_ref = expr->pound_run_expr->inferred_type_ref;
         } else {
-            printf("Don't know how to enrich expression of type %d on line %d:%d\n",
-                   expr->type, expr->start_tok->line_number, expr->start_tok->column_number);
+            printf("Don't know how to enrich expression of type %d\n", expr->type);
+            assert(false && "unreachable");
             return 1;
         }
         return 0;
@@ -710,14 +700,13 @@ namespace enrichment {
                 proc->proc_return_type_ref
             );
             if (type_cmp_status != 0) {
-                printf("Type mismatch: proc %s return type is ",
-                       proc->name_tok->str_content.c_str());
+                report_error(stmt_node, "error: return type mismatch: ");
+                printf("procedure %s return type is ", proc->name_tok->str_content.c_str());
                 print_type_ref(proc->proc_return_type_ref);
                 printf(" but return expression has type ");
                 print_type_ref(stmt_node->ret_expr->inferred_type_ref);
-                printf(" on line %d:%d", 
-                       stmt_node->ret_expr->start_tok->line_number,
-                       stmt_node->ret_expr->start_tok->column_number);
+                printf("\n");
+                report_error(proc, " <-- procedure defined here\n");
                 return type_cmp_status;
             }
             return 0;
@@ -729,14 +718,14 @@ namespace enrichment {
             Builtin::Type cond_type = builtin_type_for_resolved_ref(
                 stmt_node->if_cond_expr->inferred_type_ref);
             if (cond_type != Builtin::Bool) {
-                printf("if condition should have a bool type given ");
+                report_error(stmt_node, "error: type mismatch: ");
+                printf("if condition should have a bool type (given ");
                 print_type_ref(stmt_node->if_cond_expr->inferred_type_ref);
-                printf(" on line %d:%d", 
-                       stmt_node->if_cond_expr->start_tok->line_number,
-                       stmt_node->if_cond_expr->start_tok->column_number);
+                printf(")\n");
                 return 1;
             }
 
+            // TODO: has_ret logic is not tested and probably doesn't work
             bool then_has_ret = false;
             int then_status = enrich_statement(proc, parent_block,
                 stmt_node->if_then_stmt, loop_node, then_has_ret);
@@ -773,9 +762,8 @@ namespace enrichment {
             return 0;
         } else if (stmt_node->type == AstNode::TypeStatementBreak) {
             if (!loop_node) {
-                printf("Break is only allowed inside loop on line %d:%d\n",
-                       stmt_node->start_tok->line_number,
-                       stmt_node->start_tok->column_number);
+                report_error(stmt_node, "error: invalid statement: ");
+                printf("break is only allowed inside loop\n");
                 return 1;
             }
             stmt_node->break_loop = loop_node;
@@ -788,9 +776,8 @@ namespace enrichment {
 
             if (stmt_node->assign_lexpr->type != AstNode::TypeExpressionDereference) {
                 if (!stmt_node->assign_lexpr->expr_yields_nontemporary) {
-                    printf("Can't assign to a temporary on line %d:%d",
-                           stmt_node->start_tok->line_number,
-                           stmt_node->start_tok->column_number);
+                    report_error(stmt_node, "error: invalid statement: ");
+                    printf("can't assign to a temporary\n");
                     return 1;
                 }
             }
@@ -801,13 +788,12 @@ namespace enrichment {
                 var_type_ref, // assuming resolved for now
                 expr_type);
             if (type_cmp_status != 0) {
-                printf("Trying to assign a value of type ");
+                report_error(stmt_node, "error: type mismatch: ");
+                printf("trying to assign a value of type ");
                 print_type_ref(expr_type);
                 printf(" to a variable of type ");
                 print_type_ref(var_type_ref);
-                printf(" on line %d:%d", 
-                       stmt_node->start_tok->line_number,
-                       stmt_node->start_tok->column_number);
+                printf("\n");
                 return type_cmp_status;
             }
             return 0;
@@ -819,11 +805,10 @@ namespace enrichment {
             if (!stmt_node->var_type_ref) {
                 Token *name_tok = stmt_node->name_tok;
                 if (!stmt_node->var_init_expr) {
-                    printf("Type of variable %s can't be inferred without "
-                           "initializer on line %d:%d",
-                           name_tok->str_content.c_str(),
-                           name_tok->line_number,
-                           name_tok->column_number);
+                    report_error(stmt_node, "error: ");
+                    printf("type of variable %s can't be inferred without "
+                           "initializer\n",
+                           name_tok->str_content.c_str());
                     return 1;
                 }
                 stmt_node->var_type_ref = stmt_node->var_init_expr->inferred_type_ref;
@@ -836,23 +821,22 @@ namespace enrichment {
                     stmt_node->var_type_ref,
                     stmt_node->var_init_expr->inferred_type_ref);
                 if (type_cmp_status != 0) {
-                    printf("Trying to initialize a variable of type ");
+                    report_error(stmt_node, "error: type mismatch: ");
+                    printf("trying to initialize a variable of type ");
                     print_type_ref(stmt_node->var_type_ref);
                     printf(" with expression of type ");
                     print_type_ref(stmt_node->var_init_expr->inferred_type_ref);
-                    printf(" on line %d:%d", 
-                           stmt_node->start_tok->line_number,
-                           stmt_node->start_tok->column_number);
+                    printf("\n");
                     return type_cmp_status;
                 }
             }
             stmt_node->var_decl_enriched = true;
             return 0;
         } else if (stmt_node->type == AstNode::TypeProcedureDefinition) {
-            // skip nested procedure
+            // skip nested proc (handled by enrich_scope)
             return 0;
         } else if (stmt_node->type == AstNode::TypeTypeDefinition) {
-            // skip nested type
+            // skip nested type (handled by enrich_scope)
             return 0;
         } else if (stmt_node->type == AstNode::TypeStatementExpr) {
             int status = enrich_expression(stmt_node->stmt_expr, parent_block);
