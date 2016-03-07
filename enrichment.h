@@ -683,7 +683,6 @@ namespace enrichment {
         } else if (expr->type == AstNode::TypeExpressionPoundRun) {
             int status = enrich_expression(expr->pound_run_expr, expr);
             if (status != 0) return status;
-            code_gen_run_expression(ctce, expr->pound_run_expr);
             // TODO: substitute with constant expression
             // containing the return value.
             expr->inferred_type_ref = expr->pound_run_expr->inferred_type_ref;

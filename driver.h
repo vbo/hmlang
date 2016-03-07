@@ -8,7 +8,6 @@
 
 #include "parser.h"
 
-static CodeGenState *ctce;
 #include "enrichment.h"
 
 namespace driver {
@@ -51,14 +50,9 @@ namespace driver {
         string outfilename = string(argv[2]) + infilename + string(".out");
         std::ifstream infile(infilename);
 
-        // This token storage should be permanent,
-        // so we assume it's safe to point to it later on.
-        // We are using vector which can move itself in memory on add,
-        // so we can't add new tokens
-        // after we started to point to any Token!
         printf("Lexing...\n");
-        std::vector<Token> tokens;
-        int lexer_status = lexer::tokenize_stream(infile, tokens);
+        std::vector<Token> source_tokens;
+        int lexer_status = lexer::tokenize_stream(infile, source_tokens);
         if (lexer_status != 0) return lexer_status;
 
         AstNodePool ast_node_pool;
@@ -73,7 +67,7 @@ namespace driver {
         // Parsing result - is basically a filled AstNodePool.
         // Nodes inside can reference each other!
         printf("Parsing...\n");
-        parser::Parsing parsing(tokens, ast_node_pool);
+        parser::Parsing parsing(source_tokens, ast_node_pool);
         int parser_status = parsing.parse_all(global_scope_node);
         if (parser_status != 0) return parser_status;
 
@@ -87,7 +81,6 @@ namespace driver {
         // but references types and procedures by name and
         // lacks some information required to do code_gen on it.
         printf("Enrichment...\n");
-        ctce = code_gen_init();
         int enrich_status = enrichment::enrich_all(&global_scope_node);
         if (enrich_status != 0) return enrich_status;
 

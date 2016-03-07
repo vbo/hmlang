@@ -1,9 +1,17 @@
 namespace lexer {
+    Token& make_token(std::vector<Token>& tokens, Token::Type tok_type, int line_number, int column_number) {
+        tokens.emplace_back();
+        Token &tok = tokens.back();
+        tok.type = tok_type;
+        tok.line_number = line_number;
+        tok.column_number = column_number;
+        return tok;
+    }
+
     int tokenize_stream(std::istream& infile, std::vector<Token>& tokens) {
         std::string line;
         int line_number = 0;
         while(std::getline(infile, line)) {
-            int column_number = 0;
             line_number++;
             int i = 0;
             while (i < line.size()) {
@@ -15,10 +23,7 @@ namespace lexer {
                 }
                 // identifier/keyword
                 if (ch == '_' || (!std::ispunct(ch) && !std::isdigit(ch))) {
-                    Token tok;
-                    tok.line_number = line_number;
-                    tok.type = Token::TypeName;
-                    tok.column_number = i + 1;
+                    Token& tok = make_token(tokens, Token::TypeName, line_number, i + 1);
                     int name_start_index = i;
                     while(true) {
                         i++;
@@ -30,17 +35,13 @@ namespace lexer {
                     }
                     int name_len = i - name_start_index;
                     tok.str_content = line.substr(name_start_index, name_len);
-                    tokens.push_back(tok);
                     continue;
                 }
                 // digits
                 if (std::isdigit(ch)) {
                     // TODO: think about number literals!
                     bool dot = false;
-                    Token tok;
-                    tok.line_number = line_number;
-                    tok.type = Token::TypeLiteralNumber;
-                    tok.column_number = i + 1;
+                    Token& tok = make_token(tokens, Token::TypeLiteralNumber, line_number, i + 1);
                     int lit_start_index = i;
                     while(true) {
                         i++;
@@ -68,15 +69,23 @@ namespace lexer {
                         tok.literal_number_int_value = std::stoi(
                             tok.str_content.c_str());
                     }
-                    tokens.push_back(tok);
                     continue;
                 }
                 // punctuation
                 if (std::ispunct(ch)) {
+                    // comments
+                    if (ch == '/') {
+                        if (i + 1 < line.size() && line[i + 1] == '/') {
+                            // line comment
+                            i += 2;
+                            while(i < line.size() && line[i] != '\n') {
+                                i++;
+                            }
+                            continue;
+                        }
+                    }
+                    Token& tok = make_token(tokens, Token::TypeUnknown, line_number, i + 1);
                     if (ch == '-') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
                         // Could be just minus or arrow 
                         // TODO: do we need decrement? Minus-equals?
                         if (i < line.size() - 1 && line[i + 1] == '>') {
@@ -88,172 +97,56 @@ namespace lexer {
                             tok.str_content = "-";
                             i++;
                         }
-                        tokens.push_back(tok);
-                        continue;
-                    }
-                    // TODO: fix copy-paste?
-                    if (ch == '{') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeCurlyOpen;
-                        tok.str_content = "{";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == '}') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeCurlyClose;
-                        tok.str_content = "}";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == '(') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeParenOpen;
-                        tok.str_content = "(";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == ')') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeParenClose;
-                        tok.str_content = ")";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == ';') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeSemicolon;
-                        tok.str_content = ";";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == '#') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypePound;
-                        tok.str_content = "#";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == '&') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeOperatorAmpersand;
-                        tok.str_content = "&";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == '*') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeOperatorStar;
-                        tok.str_content = "*";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == '.') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeOperatorDot;
-                        tok.str_content = ".";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == ',') {
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeComma;
-                        tok.str_content = ",";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == '+') {
-                        // TODO: do we need increment and plus-equals?
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeOperatorPlus;
-                        tok.str_content = "+";
-                        tokens.push_back(tok);
-                        i++;
-                        continue;
-                    }
-                    if (ch == ':') {
-                        // TODO: do we need colon-colon for something?
-                        Token tok;
-                        tok.line_number = line_number;
-                        tok.column_number = i + 1;
-                        tok.type = Token::TypeColon;
-                        tok.str_content = ":";
-                        tokens.push_back(tok);
-                        i++;
                         continue;
                     }
                     if (ch == '=') {
                         if (i + 1 < line.size() && line[i + 1] == '=') {
-                            i++;
-                            Token tok;
-                            tok.line_number = line_number;
-                            tok.column_number = i;
                             tok.type = Token::TypeOperatorDoubleEquals;
                             tok.str_content = "==";
-                            tokens.push_back(tok);
-                            i++;
+                            i += 2;
                         } else {
-                            Token tok;
-                            tok.line_number = line_number;
-                            tok.column_number = i + 1;
                             tok.type = Token::TypeEquals;
                             tok.str_content = "=";
-                            tokens.push_back(tok);
                             i++;
                         }
                         continue;
                     }
-                    if (ch == '/') {
-                        if (i + 1 < line.size() && line[i + 1] == '/') {
-                            // line comment
-                            i += 2;
-                            while(i < line.size() && line[i] != '\n') {
-                                i++;
-                            }
-                            continue;
-                        } else {
-                            Token tok;
-                            tok.line_number = line_number;
-                            tok.column_number = i + 1;
-                            tok.type = Token::TypeOperatorSlash;
-                            tok.str_content = "/";
-                            tokens.push_back(tok);
-                            i++;
-                            continue;
-                        }
+                    // The rest is just simple one-char operators
+                    if (ch == '{') {
+                        tok.type = Token::TypeCurlyOpen;
+                    } else if (ch == '}') {
+                        tok.type = Token::TypeCurlyClose;
+                    } else if (ch == '(') {
+                        tok.type = Token::TypeParenOpen;
+                    } else if (ch == ')') {
+                        tok.type = Token::TypeParenClose;
+                    } else if (ch == ';') {
+                        tok.type = Token::TypeSemicolon;
+                    } else if (ch == '#') {
+                        tok.type = Token::TypePound;
+                    } else if (ch == '&') {
+                        tok.type = Token::TypeOperatorAmpersand;
+                    } else if (ch == '*') {
+                        tok.type = Token::TypeOperatorStar;
+                    } else if (ch == '.') {
+                        tok.type = Token::TypeOperatorDot;
+                    } else if (ch == ',') {
+                        tok.type = Token::TypeComma;
+                    } else if (ch == '+') {
+                        // TODO: do we need increment and plus-equals?
+                        tok.type = Token::TypeOperatorPlus;
+                    } else if (ch == ':') {
+                        tok.type = Token::TypeColon;
+                    } else if (ch == '/') {
+                        // comments are handled on top
+                        tok.type = Token::TypeOperatorSlash;
+                    } else {
+                        printf("Lexer error: invalid token on line %d:%d\n", line_number, i + 1);
+                        return 1;
                     }
+                    tok.str_content = ch;
+                    i++;
+                    continue;
                 }
                 printf("Lexer error: invalid token on line %d:%d\n", line_number, i + 1);
                 return 1;
