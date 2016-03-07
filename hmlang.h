@@ -6,9 +6,16 @@ namespace Builtin {
     enum Type {
         TypeUnknown,
         Void,
-        I8,
-        I32,
+        S8,
+        S16,
+        S32,
+        S64,
+        U8,
+        U16,
+        U32,
+        U64,
         Float32,
+        Float64,
         Bool,
         TypeLast
     };
@@ -35,9 +42,20 @@ namespace Builtin {
     Op ret_bool[] = {EqInt, EqFloat};
 
     std::string key_void = "void";
-    std::string key_i8 = "i8";
-    std::string key_i32 = "i32";
+
+    std::string key_s8 = "s8";
+    std::string key_s16 = "s16";
+    std::string key_s32 = "s32";
+    std::string key_s64 = "s64";
+
+    std::string key_u8 = "u8";
+    std::string key_u16 = "u16";
+    std::string key_u32 = "u32";
+    std::string key_u64 = "u64";
+
     std::string key_float32 = "float32";
+    std::string key_float64 = "float64";
+
     std::string key_bool = "bool";
 }
 

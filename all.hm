@@ -5,28 +5,28 @@
 // You can define procedures and types.
 // Definition order doesn't matter.
 proc do_nothing() -> void { ret void; }
-proc add(a: i32, b: i32) -> i32 { ret a + b; }
+proc add(a: s32, b: s32) -> s32 { ret a + b; }
 proc get_entity_pos(e: Entity) -> Vector2 { ret e.pos; }
 
 type Vector2 { x: float32; y: float32; }
-type Entity { id: i32; pos: Vector2; }
+type Entity { id: s32; pos: Vector2; }
 
 
-proc with_nested() -> i32 {
+proc with_nested() -> s32 {
     // Procedure body defines a scope of it's own, so you can
     // define local (nested) procedures and types.
-    proc two() -> i32 { ret one() + 1; }
-    proc one() -> i32 { ret 1; }
+    proc two() -> s32 { ret one() + 1; }
+    proc one() -> s32 { ret 1; }
 
     // Procedures and types of outer scopes are still available
     // if not shadowed local definition.
-    type Vector2 { x: i32; y: i32; }
-    proc more_nested() -> i32 {
-        proc one() -> i32 { ret 10; }
+    type Vector2 { x: s32; y: s32; }
+    proc more_nested() -> s32 {
+        proc one() -> s32 { ret 10; }
         ret one();
     }
 
-    proc get_y(v: Vector2) -> i32 { ret v.y; }
+    proc get_y(v: Vector2) -> s32 { ret v.y; }
 
     ret more_nested();
 }
@@ -36,10 +36,10 @@ proc stuff(a: float32, r: float32, v: Vector2) -> Vector2 {
     // Procedure body may contain statements
 
     // 1) Variable declarations...
-    x : i32;
+    x : s32;
     w: Vector2;
     // ...with optional initializers.
-    y : i32 = 42;
+    y : s32 = 42;
     h : Vector2 = v;
     // When initializer is present types may be inferred automagically.
     x1 := x;
@@ -68,15 +68,15 @@ proc stuff(a: float32, r: float32, v: Vector2) -> Vector2 {
 
 // You can make procedures linkable from outside as a DLL/dylib/so symbols
 // by using * (star) after 'proc' keyword.
-proc* main_i32_i32_reti32(a: i32, b: i32) ->i32 {
-    ret add(a * 100, b * 2);
+proc* called_from_c(data: s32*) -> s32 {
+    ret add(*data, 40);
 }
 
 // Pointers
 proc play_with_pointers() -> void {
     // Language has only pass-by-value semantic. Pointers to values are values =)
-    integer : i32; // actual integer is allocated on the stack
-    pointer : i32*; // p is a pointer to i32 (initialized to null)
+    integer : s32; // actual integer is allocated on the stack
+    pointer : s32*; // p is a pointer to s32 (initialized to null)
 
     // You can use & to take an address of a variable
     pointer = &integer;
@@ -88,7 +88,7 @@ proc play_with_pointers() -> void {
     *pointer = integer;
 
     // Functions can take pointer arguments
-    proc modify_integer(ip: i32*) -> void {
+    proc modify_integer(ip: s32*) -> void {
         *ip = 42;
         ret void;
     }

@@ -32,11 +32,22 @@ namespace driver {
     }
 
     void synthesize_builtin_type_ast(AstNodePool& pool, AstNode& root) {
-        synthesize_builtin_type_ast(pool, root, Builtin::Void, "void");
-        synthesize_builtin_type_ast(pool, root, Builtin::I8, "i8");
-        synthesize_builtin_type_ast(pool, root, Builtin::I32, "i32");
-        synthesize_builtin_type_ast(pool, root, Builtin::Float32, "float32");
-        synthesize_builtin_type_ast(pool, root, Builtin::Bool, "bool");
+        synthesize_builtin_type_ast(pool, root, Builtin::Void, Builtin::key_void.c_str());
+
+        synthesize_builtin_type_ast(pool, root, Builtin::S8, Builtin::key_s8.c_str());
+        synthesize_builtin_type_ast(pool, root, Builtin::S16, Builtin::key_s16.c_str());
+        synthesize_builtin_type_ast(pool, root, Builtin::S32, Builtin::key_s32.c_str());
+        synthesize_builtin_type_ast(pool, root, Builtin::S64, Builtin::key_s64.c_str());
+
+        synthesize_builtin_type_ast(pool, root, Builtin::U8, Builtin::key_u8.c_str());
+        synthesize_builtin_type_ast(pool, root, Builtin::U16, Builtin::key_u16.c_str());
+        synthesize_builtin_type_ast(pool, root, Builtin::U32, Builtin::key_u32.c_str());
+        synthesize_builtin_type_ast(pool, root, Builtin::U64, Builtin::key_u64.c_str());
+
+        synthesize_builtin_type_ast(pool, root, Builtin::Float32, Builtin::key_float32.c_str());
+        synthesize_builtin_type_ast(pool, root, Builtin::Float64, Builtin::key_float64.c_str());
+
+        synthesize_builtin_type_ast(pool, root, Builtin::Bool, Builtin::key_bool.c_str());
     }
 
     int main(int argc, char **argv) {

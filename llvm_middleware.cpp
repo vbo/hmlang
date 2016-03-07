@@ -29,9 +29,16 @@ struct CodeGenState {
 
 void init_builtins(CodeGenState *code_gen) {
     code_gen->builtin_types[Builtin::Void] = Type::getVoidTy(code_gen->ctx);
-    code_gen->builtin_types[Builtin::I8] = Type::getInt8Ty(code_gen->ctx);
-    code_gen->builtin_types[Builtin::I32] = Type::getInt32Ty(code_gen->ctx);
+    code_gen->builtin_types[Builtin::S8] = Type::getInt8Ty(code_gen->ctx);
+    code_gen->builtin_types[Builtin::U8] = Type::getInt8Ty(code_gen->ctx);
+    code_gen->builtin_types[Builtin::S16] = Type::getInt16Ty(code_gen->ctx);
+    code_gen->builtin_types[Builtin::U16] = Type::getInt16Ty(code_gen->ctx);
+    code_gen->builtin_types[Builtin::S32] = Type::getInt32Ty(code_gen->ctx);
+    code_gen->builtin_types[Builtin::U32] = Type::getInt32Ty(code_gen->ctx);
+    code_gen->builtin_types[Builtin::S64] = Type::getInt64Ty(code_gen->ctx);
+    code_gen->builtin_types[Builtin::U64] = Type::getInt64Ty(code_gen->ctx);
     code_gen->builtin_types[Builtin::Float32] = Type::getFloatTy(code_gen->ctx);
+    code_gen->builtin_types[Builtin::Float64] = Type::getDoubleTy(code_gen->ctx);
     // TODO: is it a good idea to use i1 here?
     code_gen->builtin_types[Builtin::Bool] = Type::getInt1Ty(code_gen->ctx);
 

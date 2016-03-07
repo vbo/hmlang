@@ -1,11 +1,40 @@
-proc* main_i32_i32_reti32(a: i32, b: i32) -> i32 {
-    x := (add(8, p42()));
+type Data {
+    s64_val : s64;
+    u64_val : u64;
+    float64_val : float64;
 
-    ret a + x;
+    s32_val : s32;
+    u32_val : u32;
+    float32_val : float32;
 
-    proc p42() -> i32 { ret 42; }
+    s16_val : s16;
+    u16_val : u16;
+
+    s8_val : s8;
+    u8_val : u8;
 }
 
-proc add(x: i32, y: i32) -> i32 {
+proc* called_from_c(data: Data*) -> s32 {
+    x := (add(8, p42()));
+
+    data.s64_val = data.s64_val + data.s64_val;
+    data.s32_val = data.s32_val + data.s32_val;
+    data.s16_val = data.s16_val + data.s16_val;
+    data.s8_val = data.s8_val + data.s8_val;
+
+    data.u64_val = data.u64_val + data.u64_val;
+    data.u32_val = data.u32_val + data.u32_val;
+    data.u16_val = data.u16_val + data.u16_val;
+    data.u8_val = data.u8_val + data.u8_val;
+
+    data.float64_val = data.float64_val + data.float64_val;
+    data.float32_val = data.float32_val + data.float32_val;
+
+    ret x;
+
+    proc p42() -> s32 { ret 42; }
+}
+
+proc add(x: s32, y: s32) -> s32 {
     ret x + y;
 }

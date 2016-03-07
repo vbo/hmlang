@@ -240,6 +240,7 @@ namespace enrichment {
     Builtin::Op builtin_op_for_tok(Token::Type tok_type, Builtin::Type operand_type) {
         switch (operand_type) {
             case Builtin::Float32:
+            case Builtin::Float64:
                 switch (tok_type) {
                     case Token::TypeOperatorPlus:
                         return Builtin::AddFloat;
@@ -254,8 +255,10 @@ namespace enrichment {
                     default:
                         return Builtin::OpUnknown;
                 }
-            case Builtin::I32:
-            case Builtin::I8:
+            case Builtin::S8:
+            case Builtin::S16:
+            case Builtin::S32:
+            case Builtin::S64:
                 switch (tok_type) {
                     case Token::TypeOperatorPlus:
                         return Builtin::AddInt;
@@ -265,6 +268,24 @@ namespace enrichment {
                         return Builtin::MulInt;
                     case Token::TypeOperatorSlash:
                         return Builtin::DivIntSigned;
+                    case Token::TypeOperatorDoubleEquals:
+                        return Builtin::EqInt;
+                    default:
+                        return Builtin::OpUnknown;
+                }
+            case Builtin::U8:
+            case Builtin::U16:
+            case Builtin::U32:
+            case Builtin::U64:
+                switch (tok_type) {
+                    case Token::TypeOperatorPlus:
+                        return Builtin::AddInt;
+                    case Token::TypeOperatorMinus:
+                        return Builtin::SubInt;
+                    case Token::TypeOperatorStar:
+                        return Builtin::MulInt;
+                    case Token::TypeOperatorSlash:
+                        return Builtin::DivIntUnsigned;
                     case Token::TypeOperatorDoubleEquals:
                         return Builtin::EqInt;
                     default:
@@ -514,7 +535,7 @@ namespace enrichment {
             if (expr->expr_literal_number_tok->literal_number_is_float) {
                 inferred_type = lookup_type(Builtin::key_float32, scope->parent_scope);
             } else {
-                inferred_type = lookup_type(Builtin::key_i32, scope->parent_scope);
+                inferred_type = lookup_type(Builtin::key_s32, scope->parent_scope);
             }
             assert(inferred_type && "of a literal number looked up");
             expr->inferred_type_ref = inferred_type;
