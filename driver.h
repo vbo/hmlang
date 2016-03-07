@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "hmlang.h"
+#include "errors.h"
 #include "lexer.h"
 
 #include "parser.h"
@@ -52,7 +53,7 @@ namespace driver {
 
         printf("Lexing...\n");
         std::vector<Token> source_tokens;
-        int lexer_status = lexer::tokenize_stream(infile, source_tokens);
+        int lexer_status = lexer::tokenize_stream(infile, infilename.c_str(), source_tokens);
         if (lexer_status != 0) return lexer_status;
 
         AstNodePool ast_node_pool;

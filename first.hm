@@ -1,4 +1,3 @@
-
 proc* main_i32_i32_reti32(a: i32, b: i32) -> i32 {
     x := (add(8, p42()));
 

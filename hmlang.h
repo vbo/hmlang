@@ -71,6 +71,7 @@ struct Token {
         int literal_number_int_value;
     };
     std::string str_content; // TODO: do we really need string here? PODs are cool!
+    char *filename;
     int line_number;
     int column_number;
 };

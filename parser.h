@@ -3,6 +3,7 @@
 
 namespace parser {
     using std::string;
+    using errors::report_error;
 
     // top-level keywords
     // TODO: check Sean Barrett syntax for top level stuff - is it better?
@@ -27,6 +28,7 @@ namespace parser {
         table[Token::TypeOperatorDoubleEquals] = 60;
     }
 
+    // TODO: recode this nonsense
     struct AstNodePool {
         // Can't use vector for AST storage - it reallocs!
         // Use linked list of blocks of nodes.
@@ -64,10 +66,9 @@ namespace parser {
             } else {
                 for (auto& it : known->second) {
                     if (it->type == AstNode::TypeTypeDefinition) {
-                        printf("Redefinition of type %s on line %d:%d\n",
-                               node.name_tok->str_content.c_str(),
-                               node.start_tok->line_number,
-                               node.start_tok->column_number);
+                        report_error(node);
+                        printf("error: redefinition of type %s\n", node.name_tok->str_content.c_str());
+                        report_error(it, " ... defined first time here\n");
                         return false;
                     }
                 }
@@ -81,10 +82,9 @@ namespace parser {
             } else {
                 for (auto& it : known->second) {
                     if (it->type == AstNode::TypeProcedureDefinition) {
-                        printf("Redefinition of procedure %s on line %d:%d\n",
-                               node.name_tok->str_content.c_str(),
-                               node.start_tok->line_number,
-                               node.start_tok->column_number);
+                        report_error(node);
+                        printf("error: redefinition of procedure %s\n", node.name_tok->str_content.c_str());
+                        report_error(it, " ... defined first time here\n");
                         return false;
                     }
                 }
@@ -98,10 +98,9 @@ namespace parser {
             } else {
                 for (auto& it : known->second) {
                     if (it->type == AstNode::TypeVariableDeclaration) {
-                        printf("Redefinition of a variable %s on line %d:%d\n",
-                               node.name_tok->str_content.c_str(),
-                               node.start_tok->line_number,
-                               node.start_tok->column_number);
+                        report_error(node);
+                        printf("error: redefinition of a variable %s\n", node.name_tok->str_content.c_str());
+                        report_error(it, " ... defined first time here\n");
                         return false;
                     }
                 }
@@ -151,9 +150,10 @@ namespace parser {
                         continue;
                     }
                 }
-                printf("Parse error: unexpected token \"%s\" on line %d:%d "
+                report_error(tok, "parse error: ");
+                printf("unexpected token %s\n"
                        "- was looking for top-level stuff like types and functions!\n",
-                       tok.str_content.c_str(), tok.line_number, tok.column_number);
+                       tok.str_content.c_str());
                 return 1;
             }
             return 0;
@@ -164,7 +164,8 @@ namespace parser {
             Token& tok = tokens[toki];
             toki++;
             if (toki >= tokens.size()) {
-                printf("Parse error: unexpected EOF (%s expected) after %d:%d\n", message, tok.line_number, tok.column_number);
+                report_error(tok, "parse error: ");
+                printf("%s expected, got EOF\n", message);
                 return false;
             }
             return true;
@@ -173,7 +174,8 @@ namespace parser {
         bool check_tok_type(Token::Type token_type, const char *message) {
             Token& tok = tokens[toki];
             if (tok.type != token_type) {
-                printf("Parse error: %s expected, got \"%s\" on %d:%d\n", message, tok.str_content.c_str(), tok.line_number, tok.column_number);
+                report_error(tok, "parse error: ");
+                printf("%s expected, got %s\n", message, tok.str_content.c_str());
                 return false;
             }
             return true;
@@ -211,8 +213,8 @@ namespace parser {
                 if (!next_tok("name of a member after dot")) return nullptr;
                 if (tokens[toki].type != Token::TypeName) {
                     Token& tok = tokens[toki];
-                    printf("Parse error: member name expected got %s on %d:%d\n",
-                           tok.str_content.c_str(), tok.line_number, tok.column_number);
+                    report_error(tok, "parse error: ");
+                    printf("member name expected got %s\n", tok.str_content.c_str());
                     return nullptr;
                 }
                 AstNode& node = ast_node_pool.add(AstNode::TypeExpressionMemberOf);
@@ -270,14 +272,15 @@ namespace parser {
                         node.pound_run_expr = expr;
                         return &node;
                     } else {
-                        printf("Unsupported pound keyword: %s on line %d:%d",
-                               tokens[toki].str_content.c_str(),
-                               tokens[toki].line_number, tokens[toki].column_number);
+                        Token& tok = tokens[toki];
+                        report_error(tok, "parse error: ");
+                        printf("unsupported pound keyword %s\n", tok.str_content.c_str());
                         return nullptr;
                     }
                 } else {
-                    printf("Parse error: pound keyword expected on line %d:%d\n",
-                           tokens[toki].line_number, tokens[toki].column_number);
+                    Token& tok = tokens[toki];
+                    report_error(tok, "parse error: ");
+                    printf("pound keyword expected got %s\n", tok.str_content.c_str());
                     return nullptr;
                 }
 
@@ -305,9 +308,9 @@ namespace parser {
                             } else if (tokens[toki].type == Token::TypeParenClose) {
                                 break;
                             } else {
-                                printf("Parse error: unexpected token %s on %d:%d\n",
-                                       tokens[toki].str_content.c_str(), tokens[toki].line_number,
-                                       tokens[toki].column_number);
+                                Token& tok = tokens[toki];
+                                report_error(tok, "parse error: ");
+                                printf("unexpected token %s\n", tok.str_content.c_str());
                                 return nullptr;
                             }
                         }
@@ -324,8 +327,8 @@ namespace parser {
                     }
                 }
             }
-            printf("Expression parse error: unexpected token %s on line %d:%d\n",
-                   tok.str_content.c_str(), tok.line_number, tok.column_number);
+            report_error(tok, "parse error: ");
+            printf("unexpected token %s\n", tok.str_content.c_str());
             return nullptr;
         }
 
@@ -335,9 +338,7 @@ namespace parser {
 
             AstNode *expr = parse_expression_bin_op_rhs(scope, 1, prim);
             if (!expr) {
-                printf("Parse error: invalid expression on line %d:%d",
-                       prim->start_tok->line_number,
-                       prim->start_tok->column_number);
+                report_error(expr, "parse error: invalid expression\n");
                 return nullptr;
             }
             return expr;
@@ -386,8 +387,7 @@ namespace parser {
                     if (!ast_add_child(parent_block_node, ret_stmt_node)) return 1;
                     if (tokens[toki].type == Token::TypeSemicolon) {
                         // TODO: do we want to supprt ret; wihtout expression here?
-                        printf("Expected return expression on line %d:%d\n",
-                               tokens[toki].line_number, tokens[toki].column_number);
+                        report_error(tokens[toki], "parse error: missing return expression\n");
                         return 1;
                     } else {
                         AstNode *expr = parse_expression(&parent_block_node);
@@ -461,8 +461,7 @@ namespace parser {
                 if (tokens[toki].type == Token::TypeColon) {
                     // variable declaration
                     if (expr->type != AstNode::TypeExpressionName) {
-                        printf("Parse error: unexpected colon after expression on line %d:%d",
-                               tokens[toki].line_number, tokens[toki].column_number);
+                        report_error(tokens[toki], "parse error: unexpected colon after expression\n");
                         return 1;
                     }
                     if (!next_tok("declaration continues")) return 1;
@@ -497,10 +496,8 @@ namespace parser {
                     assign_stmt_node.assign_rexpr = expr;
                     if (!ast_add_child(parent_block_node, assign_stmt_node)) return 1;
                 } else {
-                    printf("Parse error: unexpected token %s on line %d:%d",
-                           expr->start_tok->str_content.c_str(),
-                           expr->start_tok->line_number,
-                           expr->start_tok->column_number);
+                    report_error(expr, "parse error: ");
+                    printf("unexpected token %s\n", expr->start_tok->str_content.c_str());
                     return 1;
                 }
             } else {
@@ -562,11 +559,8 @@ namespace parser {
                     break;
                 }
                 Token& tok = tokens[toki];
-                printf("Parse error: comma or closing paren expected, \
-                       got \"%s\" on %d:%d\n",
-                       tok.str_content.c_str(),
-                       tok.line_number,
-                       tok.column_number);
+                report_error(tok, "parse error: comma or closing paren expected");
+                printf("got %s\n", tok.str_content.c_str());
                 return 1;
             }
 

@@ -1,14 +1,17 @@
 namespace lexer {
-    Token& make_token(std::vector<Token>& tokens, Token::Type tok_type, int line_number, int column_number) {
+    using errors::report_error;
+
+    Token& make_token(std::vector<Token>& tokens, const char *filename, Token::Type tok_type, int line_number, int column_number) {
         tokens.emplace_back();
         Token &tok = tokens.back();
         tok.type = tok_type;
+        tok.filename = (char *)filename;
         tok.line_number = line_number;
         tok.column_number = column_number;
         return tok;
     }
 
-    int tokenize_stream(std::istream& infile, std::vector<Token>& tokens) {
+    int tokenize_stream(std::istream& infile, const char *fname, std::vector<Token>& tokens) {
         std::string line;
         int line_number = 0;
         while(std::getline(infile, line)) {
@@ -23,7 +26,7 @@ namespace lexer {
                 }
                 // identifier/keyword
                 if (ch == '_' || (!std::ispunct(ch) && !std::isdigit(ch))) {
-                    Token& tok = make_token(tokens, Token::TypeName, line_number, i + 1);
+                    Token& tok = make_token(tokens, fname, Token::TypeName, line_number, i + 1);
                     int name_start_index = i;
                     while(true) {
                         i++;
@@ -41,7 +44,7 @@ namespace lexer {
                 if (std::isdigit(ch)) {
                     // TODO: think about number literals!
                     bool dot = false;
-                    Token& tok = make_token(tokens, Token::TypeLiteralNumber, line_number, i + 1);
+                    Token& tok = make_token(tokens, fname, Token::TypeLiteralNumber, line_number, i + 1);
                     int lit_start_index = i;
                     while(true) {
                         i++;
@@ -84,7 +87,7 @@ namespace lexer {
                             continue;
                         }
                     }
-                    Token& tok = make_token(tokens, Token::TypeUnknown, line_number, i + 1);
+                    Token& tok = make_token(tokens, fname, Token::TypeUnknown, line_number, i + 1);
                     if (ch == '-') {
                         // Could be just minus or arrow 
                         // TODO: do we need decrement? Minus-equals?
@@ -141,14 +144,15 @@ namespace lexer {
                         // comments are handled on top
                         tok.type = Token::TypeOperatorSlash;
                     } else {
-                        printf("Lexer error: invalid token on line %d:%d\n", line_number, i + 1);
+                        report_error(&tok, "lexer error: invalid token\n");
                         return 1;
                     }
                     tok.str_content = ch;
                     i++;
                     continue;
                 }
-                printf("Lexer error: invalid token on line %d:%d\n", line_number, i + 1);
+                Token& tok = make_token(tokens, fname, Token::TypeUnknown, line_number, i + 1);
+                report_error(&tok, "lexer error: invalid token\n");
                 return 1;
             }
         }
