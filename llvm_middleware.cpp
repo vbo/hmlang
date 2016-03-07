@@ -410,3 +410,8 @@ void code_gen_all(CodeGenState *code_gen, AstNode *root) {
     // #include "llvm/Analysis/Verifier.h"
     //verifyModule(code_gen->module, PrintMessageAction);
 }
+
+void code_gen_run_expression(CodeGenState *code_gen, AstNode *expr) {
+    // TODO: JIT compile expression (in anon function) and dependencies.
+    // Run anon function and return a value returned.
+}

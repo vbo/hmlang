@@ -15,6 +15,8 @@ namespace parser {
     string keywordRepeat = "repeat";
     string keywordBreak = "break";
 
+    string poundRun = "run";
+
     // TODO: unary operators
     // TODO: user defined operators?
     void init_bin_op_precedence(int table[]) {
@@ -177,7 +179,7 @@ namespace parser {
             return true;
         }
 
-        AstNode* parse_expression_bin_op_rhs(int lprec, AstNode *lexpr) {
+        AstNode* parse_expression_bin_op_rhs(AstNode *scope, int lprec, AstNode *lexpr) {
             while (true) {
                 int prec = get_bin_op_precedence_for_tok(tokens[toki].type);
                 if (prec < lprec) {
@@ -186,12 +188,12 @@ namespace parser {
 
                 Token& bin_op_tok = tokens[toki];
                 if (!next_tok("right hand side of binary operator expression")) return nullptr;
-                AstNode *rexpr = parse_expression_primary();
+                AstNode *rexpr = parse_expression_primary(scope);
                 if (!rexpr) return nullptr;
 
                 int next_prec = get_bin_op_precedence_for_tok(tokens[toki].type);
                 if (prec < next_prec) {
-                    rexpr = parse_expression_bin_op_rhs(prec + 1, rexpr);
+                    rexpr = parse_expression_bin_op_rhs(scope, prec + 1, rexpr);
                     if (!rexpr) return nullptr;
                 }
 
@@ -223,18 +225,18 @@ namespace parser {
             return base_node;
         }
 
-        AstNode* parse_expression_primary() {
+        AstNode* parse_expression_primary(AstNode *scope) {
             Token& tok = tokens[toki];
             if (tok.type == Token::TypeParenOpen) {
                 if (!next_tok("expression continues")) return nullptr;
-                AstNode *in_parens = parse_expression();
+                AstNode *in_parens = parse_expression(scope);
                 if (!in_parens) return nullptr;
                 if (!check_tok_type(Token::TypeParenClose, "closing paren")) return nullptr;
                 if (!next_tok("expression continues or ends")) return nullptr;
                 return in_parens;
             } else if (tok.type == Token::TypeOperatorAmpersand) {
                 if (!next_tok("expression continues")) return nullptr;
-                AstNode *expr = parse_expression_primary();
+                AstNode *expr = parse_expression_primary(scope);
                 if (!expr) return nullptr;
                 AstNode& node = ast_node_pool.add(AstNode::TypeExpressionAddressOf);
                 node.start_tok = &tok;
@@ -246,12 +248,39 @@ namespace parser {
                 return &node;
             } else if (tok.type == Token::TypeOperatorStar) {
                 if (!next_tok("expression continues")) return nullptr;
-                AstNode *expr = parse_expression_primary();
+                AstNode *expr = parse_expression_primary(scope);
                 if (!expr) return nullptr;
                 AstNode& node = ast_node_pool.add(AstNode::TypeExpressionDereference);
                 node.start_tok = &tok;
                 node.deref_expr = expr;
                 return &node;
+            } else if (tok.type == Token::TypePound) {
+                Token& start_tok = tokens[toki];
+                if (!next_tok("pound keyword")) return nullptr;
+                if (tokens[toki].type == Token::TypeName) {
+                    if (tokens[toki].str_content == poundRun) {
+                        Token& name_tok = tokens[toki];
+                        if (!next_tok("#run expression")) return nullptr;
+                        AstNode& node = ast_node_pool.add(AstNode::TypeExpressionPoundRun);
+                        node.start_tok = &start_tok;
+                        node.name_tok = &name_tok;
+                        node.parent_scope = scope;
+                        AstNode *expr = parse_expression(&node);
+                        if (!expr) return nullptr;
+                        node.pound_run_expr = expr;
+                        return &node;
+                    } else {
+                        printf("Unsupported pound keyword: %s on line %d:%d",
+                               tokens[toki].str_content.c_str(),
+                               tokens[toki].line_number, tokens[toki].column_number);
+                        return nullptr;
+                    }
+                } else {
+                    printf("Parse error: pound keyword expected on line %d:%d\n",
+                           tokens[toki].line_number, tokens[toki].column_number);
+                    return nullptr;
+                }
+
             } else {
                 if (tok.type == Token::TypeLiteralNumber) {
                     AstNode& node = ast_node_pool.add(AstNode::TypeExpressionLiteralNumber);
@@ -268,7 +297,7 @@ namespace parser {
                         node.name_tok = &name_tok;
                         if (!next_tok("call arguments list")) return nullptr;
                         while(tokens[toki].type != Token::TypeParenClose) {
-                            AstNode *call_arg_node = parse_expression();
+                            AstNode *call_arg_node = parse_expression(scope);
                             if (!call_arg_node) return nullptr;
                             if (!ast_add_child(node, *call_arg_node)) return nullptr;
                             if (tokens[toki].type == Token::TypeComma) {
@@ -295,15 +324,16 @@ namespace parser {
                     }
                 }
             }
-            printf("Expression parse error type %d on line %d:%d\n", tok.type, tok.line_number, tok.column_number);
+            printf("Expression parse error: unexpected token %s on line %d:%d\n",
+                   tok.str_content.c_str(), tok.line_number, tok.column_number);
             return nullptr;
         }
 
-        AstNode* parse_expression() {
-            AstNode *prim = parse_expression_primary();
+        AstNode* parse_expression(AstNode *scope) {
+            AstNode *prim = parse_expression_primary(scope);
             if (!prim) return nullptr;
 
-            AstNode *expr = parse_expression_bin_op_rhs(1, prim);
+            AstNode *expr = parse_expression_bin_op_rhs(scope, 1, prim);
             if (!expr) {
                 printf("Parse error: invalid expression on line %d:%d",
                        prim->start_tok->line_number,
@@ -360,7 +390,7 @@ namespace parser {
                                tokens[toki].line_number, tokens[toki].column_number);
                         return 1;
                     } else {
-                        AstNode *expr = parse_expression();
+                        AstNode *expr = parse_expression(&parent_block_node);
                         if (!expr) return 1;
                         ret_stmt_node.ret_expr = expr;
                     }
@@ -391,7 +421,7 @@ namespace parser {
                     AstNode& if_stmt_node = ast_node_pool.add(AstNode::TypeStatementIf);
                     if_stmt_node.start_tok = &tokens[toki];
                     if (!next_tok("if condition expression")) return 1;
-                    AstNode *cond_expr = parse_expression();
+                    AstNode *cond_expr = parse_expression(&parent_block_node);
                     if (!cond_expr) return 1;
                     if_stmt_node.if_cond_expr = cond_expr;
                     AstNode& then_block = ast_node_pool.add(AstNode::TypeStatementBlock);
@@ -424,7 +454,7 @@ namespace parser {
                 }
             }
 
-            AstNode *expr = parse_expression();
+            AstNode *expr = parse_expression(&parent_block_node);
             if (!expr) return 1;
 
             if (tokens[toki].type != Token::TypeSemicolon) {
@@ -452,7 +482,7 @@ namespace parser {
                     }
                     if (tokens[toki].type == Token::TypeEquals) {
                         if (!next_tok("initializer expression")) return 1;
-                        AstNode *expr = parse_expression();
+                        AstNode *expr = parse_expression(&parent_block_node);
                         if (!expr) return 1;
                         node.var_init_expr = expr;
                     }
@@ -462,7 +492,7 @@ namespace parser {
                         AstNode::TypeStatementAssign);
                     assign_stmt_node.start_tok = expr->start_tok;
                     assign_stmt_node.assign_lexpr = expr;
-                    AstNode *expr = parse_expression();
+                    AstNode *expr = parse_expression(&parent_block_node);
                     if (!expr) return 1;
                     assign_stmt_node.assign_rexpr = expr;
                     if (!ast_add_child(parent_block_node, assign_stmt_node)) return 1;

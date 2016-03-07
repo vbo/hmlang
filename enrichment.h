@@ -1,6 +1,14 @@
 namespace enrichment {
     using std::string;
 
+    int enrich_scope(AstNode *root);
+    int enrich_statement(
+        AstNode *proc, AstNode *parent_block,
+        AstNode *stmt_node,
+        AstNode *loop_node,
+        bool& has_ret
+    );
+
     void print_type_ref(AstNode* node) {
         while (true) {
             if (node->type == AstNode::TypeTypeRefName) {
@@ -96,7 +104,8 @@ namespace enrichment {
             }
             // Check parent scope
             if (scope_node->parent_scope != nullptr) {
-                if (scope_node->type == AstNode::TypeProcedureDefinition) {
+                if (scope_node->type == AstNode::TypeProcedureDefinition
+                 || scope_node->type == AstNode::TypeExpressionPoundRun) {
                     proc_hops++;
                 }
                 scope_node = scope_node->parent_scope;
@@ -266,8 +275,22 @@ namespace enrichment {
     }
 
     int check_resolved_type_ref_finite(AstNode *node, AstNode *container_type_def);
+    int enrich_type_definition(AstNode *node);
     int resolve_type_ref(AstNode *node, AstNode *scope_node, bool disallow_void = false) {
+        // This is called when we have a type ref but not sure if it makes sense.
+        // E.g. when declaring a variable we specify type by name, but what does
+        // this name actually mean, right?
+        // It should be OK to call this several times on a given node, and we should
+        // do minimal job required for each call.
         if (node->type == AstNode::TypeTypeRefName) {
+            // When type is referenced by name we lookup an actual type
+            // (definition or builtin) for a name in a given scope.
+            // We resolve looked up type as well recursively and put a pointer to it
+            // in resolved_type_ref field.
+            if (node->resolved_type_ref) {
+                // Was already resolved before. Do nothing.
+                return 0;
+            }
             Token* type_name_tok = node->name_tok;
             AstNode *resolved_type_node = lookup_type(
                 type_name_tok->str_content, scope_node);
@@ -295,40 +318,53 @@ namespace enrichment {
             }
             return 0;
         } else if (node->type == AstNode::TypeTypeRefPointer) {
+            // For pointers we just need to resolve the pointee type ref.
             int status = resolve_type_ref(node->pointee_type_ref, scope_node);
             if (status != 0) return status;
             return 0;
         } else if (node->type == AstNode::TypeTypeRefBuiltin) {
-            // already resolved - do nothing
+            // Count builtin as already resolved - we don't know much about them,
+            // but they should be implemented by code_gen somehow.
             return 0;
         } else if (node->type == AstNode::TypeTypeDefinition) {
-            if (!node->type_def_members_enrichment_done) {
-                node->type_def_members_enrichment_done = true;
-                int member_index = 0;
-                for (AstNode* member_node : node->child_nodes) {
-                    assert(member_node->type == AstNode::TypeTypeMember);
-                    int resolve_member_status = resolve_type_ref(
-                        member_node->member_type_ref, node->parent_scope, true);
-                    if (resolve_member_status != 0) return resolve_member_status;
-                    int finiteness_check_status = check_resolved_type_ref_finite(
-                        member_node->member_type_ref, node);
-                    if (finiteness_check_status != 0) {
-                        printf("  as a member %s on line %d:%d\n",
-                               member_node->name_tok->str_content.c_str(),
-                               member_node->start_tok->line_number,
-                               member_node->start_tok->column_number);
-                        return finiteness_check_status;
-                    }
-                    member_node->member_index = member_index;
-                    member_index++;
-                }
-            }
-            // already resolved - do nothing
+            // If we found a definition the type is resolved,
+            // but what if definition itself doesn't make sense?
+            // While we should on some point come to this definition
+            // in the main loop let's do this here as well, so
+            // the type is ready to be coded right away.
+            int status = enrich_type_definition(node);
+            if (status != 0) return status;
             return 0;
         }
         printf("Don't know how to resolve type ref %d\n", node->type);
         assert(false && "unreachable");
         return 1;
+    }
+
+    int enrich_type_definition(AstNode *node) {
+        assert(node->type == AstNode::TypeTypeDefinition);
+        if (!node->type_def_members_enrichment_done) {
+            node->type_def_members_enrichment_done = true;
+            int member_index = 0;
+            for (AstNode* member_node : node->child_nodes) {
+                assert(member_node->type == AstNode::TypeTypeMember);
+                int resolve_member_status = resolve_type_ref(
+                    member_node->member_type_ref, node->parent_scope, true);
+                if (resolve_member_status != 0) return resolve_member_status;
+                int finiteness_check_status = check_resolved_type_ref_finite(
+                    member_node->member_type_ref, node);
+                if (finiteness_check_status != 0) {
+                    printf("  as a member %s on line %d:%d\n",
+                           member_node->name_tok->str_content.c_str(),
+                           member_node->start_tok->line_number,
+                           member_node->start_tok->column_number);
+                    return finiteness_check_status;
+                }
+                member_node->member_index = member_index;
+                member_index++;
+            }
+        }
+        return 0;
     }
 
     int check_resolved_type_ref_finite(AstNode *node, AstNode *container_type_def) {
@@ -373,6 +409,44 @@ namespace enrichment {
             return 1;
         }
         return 563;
+    }
+
+    int enrich_proc_definition(AstNode *node) {
+        assert(node->type == AstNode::TypeProcedureDefinition);
+        // arguments (idempotent)
+        for (AstNode *arg_node : node->child_nodes) {
+            assert(arg_node->type == AstNode::TypeVariableDeclaration);
+            int resolve_arg_status = resolve_type_ref(
+                arg_node->var_type_ref, node->parent_scope, true);
+            if (resolve_arg_status != 0) return resolve_arg_status;
+            arg_node->var_decl_enriched = true;
+        }
+        // return type (idempotent)
+        int resolve_ret_status = resolve_type_ref(
+            node->proc_return_type_ref, node->parent_scope);
+        if (resolve_ret_status != 0) return resolve_ret_status;
+        if (!node->proc_body_enriched) {
+            node->proc_body_enriched = true;
+            // body
+            bool has_ret = false;
+            for (AstNode *stmt_node : node->proc_body->child_nodes) {
+                bool stmt_has_ret = false;
+                int status = enrich_statement(
+                    node, node->proc_body, stmt_node, nullptr, stmt_has_ret);
+                if (status != 0) return status;
+                if (stmt_has_ret) has_ret = true;
+            }
+            if (!has_ret) {
+                // TODO: this is not tested well and probably doesn't work :)
+                printf("Not all code pathes in procedure %s return a value\n",
+                       node->name_tok->str_content.c_str());
+                return 1;
+            }
+            // nested definitions
+            int status = enrich_scope(node->proc_body);
+            if (status != 0) return status;
+        }
+        return 0;
     }
 
     int enrich_expression(AstNode *expr, AstNode *scope);
@@ -458,10 +532,8 @@ namespace enrichment {
                 // TODO: variable type might not be resolved yet when we have real variables
                 // do we want to resolve it here or up the stack?
                 if (variable_node == nullptr) {
-                    printf("Use of undeclared variable %s on line %d:%d\n",
-                           name.c_str(),
-                           expr->start_tok->line_number,
-                           expr->start_tok->column_number);
+                    printf("Use of undeclared variable %s on line %d:%d\n", name.c_str(),
+                        expr->start_tok->line_number, expr->start_tok->column_number);
                     return 1;
                 } else {
                     assert(variable_node->var_type_ref && "defined for looked up variable");
@@ -508,7 +580,6 @@ namespace enrichment {
                        expr->start_tok->column_number);
                 return 1;
             }
-
             bool op_returns_bool = false;
             for (int i = 0; i < sizeof(Builtin::ret_bool)/sizeof(Builtin::ret_bool[0]); ++i) {
                 if (Builtin::ret_bool[i] == builtin_op) {
@@ -521,18 +592,20 @@ namespace enrichment {
             } else {
                 expr->inferred_type_ref = expr->bin_op_lexpr->inferred_type_ref;
             }
-
             expr->builtin_op = builtin_op;
         } else if (expr->type == AstNode::TypeExpressionCall) {
             string& name = expr->name_tok->str_content;
             // we are likely to call function that wasn't enriched yet by itself
-            // we don't need it's body to be correct, but at least arg and ret types are resolved here
+            // we don't need it's body to be correct, but at least arg
+            // and ret types are resolved here
             AstNode *proc_def_node = lookup_procedure(name, scope);
             if (proc_def_node == nullptr) {
-                printf("Trying to call undeclared procedure %s on line %d:%d\n",
-                       name.c_str(), expr->start_tok->line_number, expr->start_tok->column_number);
+                printf("Trying to call undeclared procedure %s on line %d:%d\n", name.c_str(),
+                    expr->start_tok->line_number, expr->start_tok->column_number);
                 return 1;
             }
+            int proc_status = enrich_proc_definition(proc_def_node);
+            if (proc_status != 0) return proc_status;
             expr->call_proc_def = proc_def_node;
             // enrich arg expressions
             for (AstNode *arg_expr : expr->child_nodes) {
@@ -541,8 +614,9 @@ namespace enrichment {
             }
             // TODO: default arguments?
             if (expr->child_nodes.size() != proc_def_node->child_nodes.size()) {
-                printf("Procedure %s takes %lu arguments, %lu arguments given for call on line %d:%d",
-                       name.c_str(), proc_def_node->child_nodes.size(), expr->child_nodes.size(),
+                printf("Procedure %s takes %lu arguments, "
+                       "%lu arguments given for call on line %d:%d", name.c_str(),
+                       proc_def_node->child_nodes.size(), expr->child_nodes.size(),
                        expr->start_tok->line_number, expr->start_tok->column_number);
                 return 1;
             }
@@ -605,8 +679,14 @@ namespace enrichment {
                        expr->start_tok->column_number);
                 return 1;
             }
-            expr->inferred_type_ref = expr->deref_expr->
-                inferred_type_ref->pointee_type_ref;
+            expr->inferred_type_ref = expr->deref_expr->inferred_type_ref->pointee_type_ref;
+        } else if (expr->type == AstNode::TypeExpressionPoundRun) {
+            int status = enrich_expression(expr->pound_run_expr, expr);
+            if (status != 0) return status;
+            code_gen_run_expression(ctce, expr->pound_run_expr);
+            // TODO: substitute with constant expression
+            // containing the return value.
+            expr->inferred_type_ref = expr->pound_run_expr->inferred_type_ref;
         } else {
             printf("Don't know how to enrich expression of type %d on line %d:%d\n",
                    expr->type, expr->start_tok->line_number, expr->start_tok->column_number);
@@ -615,7 +695,6 @@ namespace enrichment {
         return 0;
     }
 
-    int enrich_scope(AstNode *root); // forward declare to call from enrich_statement
     int enrich_statement(
         AstNode *proc, AstNode *parent_block,
         AstNode *stmt_node,
@@ -788,38 +867,16 @@ namespace enrichment {
 
     int enrich_scope(AstNode *root) {
         for (AstNode* node : root->child_nodes) {
+            // While type and procedure definitions are enriched as we go
+            // we should do it here to make sure the whole
+            // program is correct even if this type is not used anywhere by value
+            // or procedure is never called.
             if (node->type == AstNode::TypeProcedureDefinition) {
-                // arguments
-                for (AstNode *arg_node : node->child_nodes) {
-                    assert(arg_node->type == AstNode::TypeVariableDeclaration);
-                    int resolve_arg_status = resolve_type_ref(
-                        arg_node->var_type_ref, node->parent_scope, true);
-                    if (resolve_arg_status != 0) return resolve_arg_status;
-                    arg_node->var_decl_enriched = true;
-                }
-                // return type
-                int resolve_ret_status = resolve_type_ref(
-                    node->proc_return_type_ref, node->parent_scope);
-                if (resolve_ret_status != 0) return resolve_ret_status;
-                
-                // body
-                bool has_ret = false;
-                for (AstNode *stmt_node : node->proc_body->child_nodes) {
-                    bool stmt_has_ret = false;
-                    int status = enrich_statement(
-                        node, node->proc_body, stmt_node, nullptr, stmt_has_ret);
-                    if (status != 0) return status;
-                    if (stmt_has_ret) has_ret = true;
-                }
-                if (!has_ret) {
-                    printf("Not all code pathes in procedure %s return a value\n", node->name_tok->str_content.c_str());
-                    return 1;
-                }
-                // nested definitions
-                int status = enrich_scope(node->proc_body);
+                int status = enrich_proc_definition(node);
                 if (status != 0) return status;
             } else if (node->type == AstNode::TypeTypeDefinition) {
-                // ignore: enriched as we go
+                int status = enrich_type_definition(node);
+                if (status != 0) return status;
             }
         }
         return 0;

@@ -59,6 +59,7 @@ struct Token {
         TypeComma,
         TypeArrow,
         TypeSemicolon,
+        TypePound,
         TypeColon,
         TypeEquals,
         TypeLast
@@ -101,6 +102,7 @@ struct AstNode {
         TypeExpressionAddressOf,
         TypeExpressionDereference,
         TypeExpressionLiteralNumber,
+        TypeExpressionPoundRun,
         TypeGlobalScope,
         // TODO: do we need a separate structure for these?
         TypeTypeRefName, // we set resolved_type_name during enrichment
@@ -122,6 +124,7 @@ struct AstNode {
             AstNode *proc_return_type_ref;
             AstNode *proc_body;
             bool is_public;
+            bool proc_body_enriched;
             // uses child_nodes for arguments
             // has parent_scope
         };
@@ -194,6 +197,10 @@ struct AstNode {
             Token *expr_literal_number_tok;
             // has inferred_type_ref
         };
+        struct { // TypeExpressionPoundRun
+            AstNode *pound_run_expr;
+            // has parent scope
+        };
         struct { // TypeGlobalScope
             // has parent_scope
         };
@@ -225,6 +232,7 @@ struct AstNode {
 struct CodeGenState;
 CodeGenState* code_gen_init();
 void code_gen_all(CodeGenState *code_gen, AstNode *root);
+void code_gen_run_expression(CodeGenState *code_gen, AstNode *expr);
 void code_gen_print_result(CodeGenState *code_gen);
 void code_gen_output_result(CodeGenState *code_gen, std::string& out_buf);
 
