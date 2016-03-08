@@ -7,6 +7,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LegacyPassManager.h"
@@ -198,6 +199,7 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
         std::string& name = expr->name_tok->str_content;
         AstNode *var_node = expr->resolved_var;
         if (!var_node) return nullptr; // void
+        assert(var_node->code_gen_ref && "already filled");
         Value *var_on_stack = (Value *)var_node->code_gen_ref;
         assert(var_on_stack->getType()->isPointerTy());
         bool is_volatile = false;
@@ -273,6 +275,21 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
     }
 }
 
+Constant* get_zero_constant(Type *var_type) {
+    if (var_type->isIntegerTy()) {
+        return ConstantInt::get(var_type, 0);
+    } else if (var_type->isAggregateType()) {
+        return ConstantAggregateZero::get(var_type);
+    } else if (var_type->isFloatingPointTy()) {
+        return ConstantFP::get(var_type, 0.0);
+    } else if (var_type->isPointerTy()) {
+        return ConstantPointerNull::get((PointerType *)var_type);
+    } else {
+        assert(false && "can't zero initialize type");
+        return nullptr;
+    }
+
+}
 void code_gen_scope(CodeGenState *code_gen, AstNode *root); // Forward declare for code_gen_stmt
 bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stmt_node) {
     Function *func = (Function *)proc_node->code_gen_ref;
@@ -351,18 +368,7 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
             Value *init_value = get_value(code_gen, stmt_node->var_init_expr);
             code_gen->ir_builder->CreateStore(init_value, var_on_stack);
         } else {
-            Value *zero_value;
-            if (var_type->isIntegerTy()) {
-                zero_value = ConstantInt::get(var_type, 0);
-            } else if (var_type->isAggregateType()) {
-                zero_value = ConstantAggregateZero::get(var_type);
-            } else if (var_type->isFloatingPointTy()) {
-                zero_value = ConstantFP::get(var_type, 0.0);
-            } else if (var_type->isPointerTy()) {
-                zero_value = ConstantPointerNull::get((PointerType *)var_type);
-            } else {
-                assert(false && "can't zero initialize type");
-            }
+            Value *zero_value = get_zero_constant(var_type);
             code_gen->ir_builder->CreateStore(zero_value, var_on_stack);
         }
     } else if (stmt_node->type == AstNode::TypeProcedureDefinition) {
@@ -407,6 +413,33 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
         if (node->type == AstNode::TypeTypeDefinition) {
             // ignore: coded as we go
             continue;
+        }
+        if (root->type == AstNode::TypeGlobalScope) {
+            // only codegen global variables this way
+            if (node->type == AstNode::TypeVariableDeclaration) {
+                AstNode *var_type_ref = node->var_type_ref;
+                Type *var_type = get_type_by_ref(code_gen, var_type_ref);
+                Constant *initializer;
+                if (!node->var_init_expr) {
+                    initializer = get_zero_constant(var_type);
+                } else {
+                    assert(node->var_init_expr->type
+                           == AstNode::TypeExpressionLiteralNumber);
+                    initializer = (Constant *)get_value(code_gen, node->var_init_expr);
+                }
+                bool is_const = false;
+                // TODO: do we need to free this?
+                GlobalVariable *var = new GlobalVariable(
+                    *code_gen->module,
+                    var_type,
+                    is_const,
+                    GlobalValue::PrivateLinkage,
+                    initializer,
+                    node->name_tok->str_content
+                );
+                node->code_gen_ref = var;
+                continue;
+            }
         }
     }
 }

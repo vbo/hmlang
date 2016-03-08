@@ -705,6 +705,43 @@ namespace enrichment {
         return 0;
     }
 
+    int enrich_variable_declaration(AstNode *stmt_node, AstNode *parent_block) {
+        if (stmt_node->var_init_expr) {
+            int status = enrich_expression(stmt_node->var_init_expr, parent_block);
+            if (status != 0) return status;
+        }
+        if (!stmt_node->var_type_ref) {
+            Token *name_tok = stmt_node->name_tok;
+            if (!stmt_node->var_init_expr) {
+                report_error(stmt_node, "error: ");
+                printf("type of variable %s can't be inferred without "
+                       "initializer\n",
+                       name_tok->str_content.c_str());
+                return 1;
+            }
+            stmt_node->var_type_ref = stmt_node->var_init_expr->inferred_type_ref;
+        }
+        int resolve_status = resolve_type_ref(
+            stmt_node->var_type_ref, parent_block, true);
+        if (resolve_status != 0) return resolve_status;
+        if (stmt_node->var_init_expr) {
+            int type_cmp_status = check_resolved_type_refs_equal(
+                stmt_node->var_type_ref,
+                stmt_node->var_init_expr->inferred_type_ref);
+            if (type_cmp_status != 0) {
+                report_error(stmt_node, "error: type mismatch: ");
+                printf("trying to initialize a variable of type ");
+                print_type_ref(stmt_node->var_type_ref);
+                printf(" with expression of type ");
+                print_type_ref(stmt_node->var_init_expr->inferred_type_ref);
+                printf("\n");
+                return type_cmp_status;
+            }
+        }
+        stmt_node->var_decl_enriched = true;
+        return 0;
+    }
+
     int enrich_statement(
         AstNode *proc, AstNode *parent_block,
         AstNode *stmt_node,
@@ -819,39 +856,8 @@ namespace enrichment {
             }
             return 0;
         } else if (stmt_node->type == AstNode::TypeVariableDeclaration) {
-            if (stmt_node->var_init_expr) {
-                int status = enrich_expression(stmt_node->var_init_expr, parent_block);
-                if (status != 0) return status;
-            }
-            if (!stmt_node->var_type_ref) {
-                Token *name_tok = stmt_node->name_tok;
-                if (!stmt_node->var_init_expr) {
-                    report_error(stmt_node, "error: ");
-                    printf("type of variable %s can't be inferred without "
-                           "initializer\n",
-                           name_tok->str_content.c_str());
-                    return 1;
-                }
-                stmt_node->var_type_ref = stmt_node->var_init_expr->inferred_type_ref;
-            }
-            int resolve_status = resolve_type_ref(
-                stmt_node->var_type_ref, parent_block, true);
-            if (resolve_status != 0) return resolve_status;
-            if (stmt_node->var_init_expr) {
-                int type_cmp_status = check_resolved_type_refs_equal(
-                    stmt_node->var_type_ref,
-                    stmt_node->var_init_expr->inferred_type_ref);
-                if (type_cmp_status != 0) {
-                    report_error(stmt_node, "error: type mismatch: ");
-                    printf("trying to initialize a variable of type ");
-                    print_type_ref(stmt_node->var_type_ref);
-                    printf(" with expression of type ");
-                    print_type_ref(stmt_node->var_init_expr->inferred_type_ref);
-                    printf("\n");
-                    return type_cmp_status;
-                }
-            }
-            stmt_node->var_decl_enriched = true;
+            int status = enrich_variable_declaration(stmt_node, parent_block);
+            if (status != 0) return status;
             return 0;
         } else if (stmt_node->type == AstNode::TypeProcedureDefinition) {
             // skip nested proc (handled by enrich_scope)
@@ -881,6 +887,19 @@ namespace enrichment {
             } else if (node->type == AstNode::TypeTypeDefinition) {
                 int status = enrich_type_definition(node);
                 if (status != 0) return status;
+            } else if (root->type == AstNode::TypeGlobalScope) {
+                // handle only global variable declarations here
+                if (node->type == AstNode::TypeVariableDeclaration) {
+                    int status = enrich_variable_declaration(node, root);
+                    if (status != 0) return status;
+                    if (node->var_init_expr && node->var_init_expr->type
+                        != AstNode::TypeExpressionLiteralNumber) {
+                        report_error(node->var_init_expr, "error: ");
+                        printf("can't initialize a global variable %s with non-constant "
+                               "expression\n", node->name_tok->str_content.c_str());
+                        return 1;
+                    }
+                }
             }
         }
         return 0;

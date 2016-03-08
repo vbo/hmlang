@@ -4,6 +4,8 @@ target triple = "x86_64-apple-darwin15.2.0"
 %myint = type { i64 }
 %mytype = type { %myint, i32, i8 }
 
+@.global_thing = private global i32 42;
+
 define i32* @addf(%mytype* %a) nounwind alwaysinline {
     %1 = alloca %mytype;
     store %mytype zeroinitializer, %mytype* %1;

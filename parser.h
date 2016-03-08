@@ -128,7 +128,7 @@ namespace parser {
             return bin_op_precedence[type];
         }
 
-        int parse_all(AstNode& scopeNode) {
+        int parse_all(AstNode& scope_node) {
             // Here we want to parse a whole stream
             // and produce a parse tree.
             // On this point we don't know if the code makes
@@ -139,15 +139,35 @@ namespace parser {
                     // top level stuff
                     // function
                     if (tok.str_content == keywordProc) {
-                        int status = parse_procedure(scopeNode);
+                        int status = parse_procedure(scope_node);
                         if (status != 0) return status;
                         continue;
                     }
                     // type
                     if (tok.str_content == keywordType) {
-                        int status = parse_type(scopeNode);
+                        int status = parse_type(scope_node);
                         if (status != 0) return status;
                         continue;
+                    }
+                    // assuming global statement
+                    AstNode *expr = parse_expression(&scope_node);
+                    if (!expr) return 1;
+                    if (tokens[toki].type != Token::TypeSemicolon) {
+                        // variable declaration?
+                        if (tokens[toki].type == Token::TypeColon) {
+                            // variable declaration
+                            AstNode *decl = parse_variable_declaration(expr, scope_node);
+                            if (decl == nullptr) return 1;
+                            if (!ast_add_child(scope_node, *decl)) return 1;
+                            if (!check_tok_type(Token::TypeSemicolon,
+                                                "semicolon after statement")) return 1;
+                            if (!next_tok("global scope continues or ends")) return 1;
+                            continue;
+                        } else {
+                            report_error(expr, "parse error: ");
+                            printf("unexpected token %s\n", expr->start_tok->str_content.c_str());
+                            return 1;
+                        }
                     }
                 }
                 report_error(tok, "parse error: ");
@@ -364,6 +384,34 @@ namespace parser {
             return left_ref;
         }
 
+        AstNode* parse_variable_declaration(AstNode *expr, AstNode& parent_block_node) {
+            if (expr->type != AstNode::TypeExpressionName) {
+                report_error(tokens[toki], "parse error: unexpected colon after expression\n");
+                return nullptr;
+            }
+            if (!next_tok("declaration continues")) return nullptr;
+
+            AstNode& node = ast_node_pool.add(AstNode::TypeVariableDeclaration);
+            node.start_tok = expr->start_tok;
+            node.name_tok = expr->name_tok;
+            if (tokens[toki].type != Token::TypeEquals) {
+                // explicit type specification
+                AstNode *var_type_node = parse_type_ref();
+                if (!var_type_node) return nullptr;
+                node.var_type_ref = var_type_node;
+            } else {
+                // type should be inferred from the initializer
+                node.var_type_ref = nullptr;
+            }
+            if (tokens[toki].type == Token::TypeEquals) {
+                if (!next_tok("initializer expression")) return nullptr;
+                AstNode *expr = parse_expression(&parent_block_node);
+                if (!expr) return nullptr;
+                node.var_init_expr = expr;
+            }
+            return &node;
+        }
+
         int parse_statement(AstNode& parent_block_node) {
             if (tokens[toki].type == Token::TypeCurlyOpen) {
                 AstNode& block_node = ast_node_pool.add(AstNode::TypeStatementBlock);
@@ -460,31 +508,9 @@ namespace parser {
             if (tokens[toki].type != Token::TypeSemicolon) {
                 if (tokens[toki].type == Token::TypeColon) {
                     // variable declaration
-                    if (expr->type != AstNode::TypeExpressionName) {
-                        report_error(tokens[toki], "parse error: unexpected colon after expression\n");
-                        return 1;
-                    }
-                    if (!next_tok("declaration continues")) return 1;
-
-                    AstNode& node = ast_node_pool.add(AstNode::TypeVariableDeclaration);
-                    node.start_tok = expr->start_tok;
-                    node.name_tok = expr->name_tok;
-                    if (!ast_add_child(parent_block_node, node)) return 1;
-                    if (tokens[toki].type != Token::TypeEquals) {
-                        // explicit type specification
-                        AstNode *var_type_node = parse_type_ref();
-                        if (!var_type_node) return 1;
-                        node.var_type_ref = var_type_node;
-                    } else {
-                        // type should be inferred from the initializer
-                        node.var_type_ref = nullptr;
-                    }
-                    if (tokens[toki].type == Token::TypeEquals) {
-                        if (!next_tok("initializer expression")) return 1;
-                        AstNode *expr = parse_expression(&parent_block_node);
-                        if (!expr) return 1;
-                        node.var_init_expr = expr;
-                    }
+                    AstNode *decl = parse_variable_declaration(expr, parent_block_node);
+                    if (decl == nullptr) return 1;
+                    if (!ast_add_child(parent_block_node, *decl)) return 1;
                 } else if (tokens[toki].type == Token::TypeEquals) {
                     if (!next_tok("assignment rvalue expression")) return 1;
                     AstNode& assign_stmt_node = ast_node_pool.add(
