@@ -88,6 +88,7 @@ namespace lexer {
                         }
                     }
                     Token& tok = make_token(tokens, fname, Token::TypeUnknown, line_number, i + 1);
+                    // TODO: pool out two-char operators logic
                     if (ch == '-') {
                         // Could be just minus or arrow 
                         // TODO: do we need decrement? Minus-equals?
@@ -102,6 +103,18 @@ namespace lexer {
                         }
                         continue;
                     }
+                    if (ch == '!') {
+                        if (i + 1 < line.size() && line[i + 1] == '=') {
+                            tok.type = Token::TypeOperatorBangEquals;
+                            tok.str_content = "!=";
+                            i += 2;
+                        } else {
+                            tok.type = Token::TypeOperatorBang;
+                            tok.str_content = "!";
+                            i++;
+                        }
+                        continue;
+                    }
                     if (ch == '=') {
                         if (i + 1 < line.size() && line[i + 1] == '=') {
                             tok.type = Token::TypeOperatorDoubleEquals;
@@ -110,6 +123,30 @@ namespace lexer {
                         } else {
                             tok.type = Token::TypeEquals;
                             tok.str_content = "=";
+                            i++;
+                        }
+                        continue;
+                    }
+                    if (ch == '&') {
+                        if (i + 1 < line.size() && line[i + 1] == '&') {
+                            tok.type = Token::TypeOperatorDoubleAmpersand;
+                            tok.str_content = "&&";
+                            i += 2;
+                        } else {
+                            tok.type = Token::TypeOperatorAmpersand;
+                            tok.str_content = "&";
+                            i++;
+                        }
+                        continue;
+                    }
+                    if (ch == '|') {
+                        if (i + 1 < line.size() && line[i + 1] == '|') {
+                            tok.type = Token::TypeOperatorDoublePipe;
+                            tok.str_content = "||";
+                            i += 2;
+                        } else {
+                            tok.type = Token::TypeOperatorPipe;
+                            tok.str_content = "|";
                             i++;
                         }
                         continue;
@@ -131,8 +168,6 @@ namespace lexer {
                         tok.type = Token::TypeOperatorLess;
                     } else if (ch == '#') {
                         tok.type = Token::TypePound;
-                    } else if (ch == '&') {
-                        tok.type = Token::TypeOperatorAmpersand;
                     } else if (ch == '*') {
                         tok.type = Token::TypeOperatorStar;
                     } else if (ch == '.') {

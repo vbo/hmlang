@@ -332,6 +332,8 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
                 return code_gen->ir_builder->CreateFDiv(lhs, rhs);
             case Builtin::EqFloat:
                 return code_gen->ir_builder->CreateFCmpUEQ(lhs, rhs);
+            case Builtin::NeFloat:
+                return code_gen->ir_builder->CreateFCmpUNE(lhs, rhs);
             case Builtin::GtFloat:
                 return code_gen->ir_builder->CreateFCmpUGT(lhs, rhs);
             case Builtin::LtFloat:
@@ -345,11 +347,26 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
                 return code_gen->ir_builder->CreateMul(lhs, rhs);
             case Builtin::EqInt:
                 return code_gen->ir_builder->CreateICmpEQ(lhs, rhs);
-            // integer signed-unsigned
+            case Builtin::NeInt:
+                return code_gen->ir_builder->CreateICmpNE(lhs, rhs);
+            // integer signed-unsigned operations
             case Builtin::DivIntSigned:
                 return code_gen->ir_builder->CreateSDiv(lhs, rhs);
             case Builtin::DivIntUnsigned:
                 return code_gen->ir_builder->CreateUDiv(lhs, rhs);
+            case Builtin::GtIntSigned:
+                return code_gen->ir_builder->CreateICmpSGT(lhs, rhs);
+            case Builtin::GtIntUnsigned:
+                return code_gen->ir_builder->CreateICmpUGT(lhs, rhs);
+            case Builtin::LtIntSigned:
+                return code_gen->ir_builder->CreateICmpSLT(lhs, rhs);
+            case Builtin::LtIntUnsigned:
+                return code_gen->ir_builder->CreateICmpULT(lhs, rhs);
+            // bool operations (assume 1-bit bool)
+            case Builtin::AndBool:
+                return code_gen->ir_builder->CreateAnd(lhs, rhs);
+            case Builtin::OrBool:
+                return code_gen->ir_builder->CreateOr(lhs, rhs);
             // panic!
             case Builtin::OpUnknown:
             case Builtin::OpLast:

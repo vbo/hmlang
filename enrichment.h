@@ -239,6 +239,15 @@ namespace enrichment {
 
     Builtin::Op builtin_op_for_tok(Token::Type tok_type, Builtin::Type operand_type) {
         switch (operand_type) {
+            case Builtin::Bool:
+                switch (tok_type) {
+                    case Token::TypeOperatorDoublePipe:
+                        return Builtin::OrBool;
+                    case Token::TypeOperatorDoubleAmpersand:
+                        return Builtin::AndBool;
+                    default:
+                        return Builtin::OpUnknown;
+                }
             case Builtin::Float32:
             case Builtin::Float64:
                 switch (tok_type) {
@@ -252,6 +261,8 @@ namespace enrichment {
                         return Builtin::DivFloat;
                     case Token::TypeOperatorDoubleEquals:
                         return Builtin::EqFloat;
+                    case Token::TypeOperatorBangEquals:
+                        return Builtin::NeFloat;
                     case Token::TypeOperatorGreater:
                         return Builtin::GtFloat;
                     case Token::TypeOperatorLess:
@@ -274,6 +285,12 @@ namespace enrichment {
                         return Builtin::DivIntSigned;
                     case Token::TypeOperatorDoubleEquals:
                         return Builtin::EqInt;
+                    case Token::TypeOperatorBangEquals:
+                        return Builtin::NeInt;
+                    case Token::TypeOperatorGreater:
+                        return Builtin::GtIntSigned;
+                    case Token::TypeOperatorLess:
+                        return Builtin::LtIntSigned;
                     default:
                         return Builtin::OpUnknown;
                 }
@@ -292,6 +309,12 @@ namespace enrichment {
                         return Builtin::DivIntUnsigned;
                     case Token::TypeOperatorDoubleEquals:
                         return Builtin::EqInt;
+                    case Token::TypeOperatorBangEquals:
+                        return Builtin::NeInt;
+                    case Token::TypeOperatorGreater:
+                        return Builtin::GtIntUnsigned;
+                    case Token::TypeOperatorLess:
+                        return Builtin::LtIntUnsigned;
                     default:
                         return Builtin::OpUnknown;
                 }

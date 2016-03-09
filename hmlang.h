@@ -6,42 +6,40 @@ namespace Builtin {
     enum Type {
         TypeUnknown,
         Void,
-        S8,
-        S16,
-        S32,
-        S64,
-        U8,
-        U16,
-        U32,
-        U64,
-        Float32,
-        Float64,
+        S8, S16, S32, S64,
+        U8, U16, U32, U64,
+        Float32, Float64,
         Bool,
         TypeLast
     };
     enum Op {
         OpUnknown,
         // Unsigned-float operations are inefficient, so we don't provide them!
-        AddFloat,
-        SubFloat,
-        MulFloat,
-        DivFloat,
-        EqFloat,
-        GtFloat,
-        LtFloat,
-        // for two's complement code gen most integer operations are the same for signed and unsigned
-        AddInt,
-        SubInt,
+        AddFloat, SubFloat,
+        MulFloat, DivFloat,
+        EqFloat, NeFloat, GtFloat, LtFloat,
+        // for two's complement code_gen some integer operations are the same
+        // for signed and unsigned integers
+        AddInt, SubInt,
         MulInt,
-        EqInt,
+        EqInt, NeInt,
         // Integer division is different for signed and unsigned
-        DivIntSigned,
-        DivIntUnsigned,
-
+        DivIntSigned, DivIntUnsigned,
+        GtIntSigned, GtIntUnsigned,
+        LtIntSigned, LtIntUnsigned,
+        // Bool - for now assume we don't know bool code_gen representation
+        AndBool, OrBool,
         OpLast
     };
 
-    Op ret_bool[] = {EqInt, EqFloat, GtFloat, LtFloat};
+    // TODO: maybe reimplement operators as builtin procs?
+    Op ret_bool[] = {
+        EqInt, NeInt,
+        GtIntSigned, GtIntUnsigned,
+        LtIntSigned, LtIntUnsigned,
+        EqFloat, NeFloat,
+        GtFloat, LtFloat
+    };
 
     std::string key_void = "void";
 
@@ -75,9 +73,14 @@ struct Token {
         TypeOperatorStar,
         TypeOperatorSlash,
         TypeOperatorDoubleEquals,
+        TypeOperatorBangEquals,
+        TypeOperatorBang,
+        TypeOperatorPipe,
+        TypeOperatorDoublePipe,
         TypeOperatorGreater,
         TypeOperatorLess,
         TypeOperatorAmpersand,
+        TypeOperatorDoubleAmpersand,
         TypeComma,
         TypeArrow,
         TypeSemicolon,
