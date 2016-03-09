@@ -21,11 +21,13 @@ namespace parser {
     // TODO: unary operators
     // TODO: user defined operators?
     void init_bin_op_precedence(int table[]) {
-        table[Token::TypeOperatorPlus] = 20;
-        table[Token::TypeOperatorMinus] = 20;
-        table[Token::TypeOperatorStar] = 40;
-        table[Token::TypeOperatorSlash] = 40;
-        table[Token::TypeOperatorDoubleEquals] = 60;
+        table[Token::TypeOperatorDoubleEquals] = 20;
+        table[Token::TypeOperatorGreater] = 30;
+        table[Token::TypeOperatorLess] = 30;
+        table[Token::TypeOperatorPlus] = 40;
+        table[Token::TypeOperatorMinus] = 40;
+        table[Token::TypeOperatorStar] = 60;
+        table[Token::TypeOperatorSlash] = 60;
     }
 
     // TODO: recode this nonsense

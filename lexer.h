@@ -125,6 +125,10 @@ namespace lexer {
                         tok.type = Token::TypeParenClose;
                     } else if (ch == ';') {
                         tok.type = Token::TypeSemicolon;
+                    } else if (ch == '>') {
+                        tok.type = Token::TypeOperatorGreater;
+                    } else if (ch == '<') {
+                        tok.type = Token::TypeOperatorLess;
                     } else if (ch == '#') {
                         tok.type = Token::TypePound;
                     } else if (ch == '&') {

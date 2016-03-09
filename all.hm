@@ -31,7 +31,7 @@ proc with_nested() -> s32 {
     ret more_nested();
 }
 
-
+// TODO: loops
 proc stuff(a: float32, r: float32, v: Vector2) -> Vector2 {
     // Procedure body may contain statements
 

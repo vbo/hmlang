@@ -16,8 +16,19 @@
 
 #include "llvm/IRReader/IRReader.h" // TODO: check this out for loading compiled llvm modules
 
-using namespace llvm;
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/RTDyldMemoryManager.h"
+#include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
+#include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
+#include "llvm/IR/Mangler.h"
+#include "llvm/Support/DynamicLibrary.h"
 
+using namespace llvm;
+using namespace llvm::orc;
+
+class JitState;
 struct CodeGenState {
     LLVMContext ctx;
     TargetMachine *target_machine;
@@ -26,6 +37,77 @@ struct CodeGenState {
     Module *module;
     Type* builtin_types[Builtin::TypeLast];
     AttributeSet default_func_attr;
+    JitState *jit_state;
+};
+
+class JitState {
+    typedef ObjectLinkingLayer<> ObjectLinkingLayerT;
+    typedef IRCompileLayer<ObjectLinkingLayerT> CompileLayerT;
+    typedef CompileLayerT::ModuleSetHandleT ModuleHandleT;
+    ObjectLinkingLayerT object_linking_layer;
+    IRCompileLayer<ObjectLinkingLayerT> ir_compile_layer;
+    std::vector<ModuleHandleT> module_handles;
+    const DataLayout data_layout;
+public:
+    JitState(TargetMachine *target_machine) :
+        data_layout(target_machine->createDataLayout()),
+        ir_compile_layer(object_linking_layer, SimpleCompiler(*target_machine))
+    {}
+
+    ModuleHandleT addModule(std::unique_ptr<Module> M) {
+        // We need a memory manager to allocate memory and resolve symbols for this
+        // new module. Create one that resolves symbols by looking back into the
+        // JIT.
+        auto Resolver = createLambdaResolver(
+            [&](const std::string &Name) {
+                printf("Resolving: %s\n", Name.c_str());
+                if (auto Sym = findMangledSymbol(Name))
+                    return RuntimeDyld::SymbolInfo(Sym.getAddress(), Sym.getFlags());
+                return RuntimeDyld::SymbolInfo(nullptr);
+            },
+            [](const std::string &S) { return nullptr; });
+        auto H = ir_compile_layer.addModuleSet(
+            singletonSet(std::move(M)),
+            make_unique<SectionMemoryManager>(),
+            std::move(Resolver));
+        module_handles.push_back(H);
+        return H;
+    }
+
+    JITSymbol findSymbol(const std::string Name) {
+        return findMangledSymbol(mangle(Name));
+    }
+
+private:
+    std::string mangle(const std::string &Name) {
+        std::string MangledName;
+        {
+            raw_string_ostream MangledNameStream(MangledName);
+            Mangler::getNameWithPrefix(MangledNameStream, Name, data_layout);
+        }
+        return MangledName;
+    }
+
+    template <typename T> static std::vector<T> singletonSet(T t) {
+        std::vector<T> Vec;
+        Vec.push_back(std::move(t));
+        return Vec;
+    }
+
+    JITSymbol findMangledSymbol(const std::string &Name) {
+        // Search modules in reverse order: from last added to first added.
+        // This is the opposite of the usual search order for dlsym, but makes more
+        // sense in a REPL where we want to bind to the newest available definition.
+        for (auto H : make_range(module_handles.rbegin(), module_handles.rend()))
+            if (auto Sym = ir_compile_layer.findSymbolIn(H, Name, true))
+                return Sym;
+
+        // If we can't find the symbol in the JIT, try looking in the host process.
+        //if (auto SymAddr = RTDyldMemoryManager::getSymbolAddressInProcess(Name))
+        //    return JITSymbol(SymAddr, JITSymbolFlags::Exported);
+
+        return nullptr;
+    }
 };
 
 void init_builtins(CodeGenState *code_gen) {
@@ -68,6 +150,9 @@ Type* get_builtin_type(CodeGenState *code_gen, Builtin::Type type_id) {
 
 CodeGenState* code_gen_init() {
     InitializeNativeTarget();
+    InitializeNativeTargetAsmPrinter();
+    InitializeNativeTargetAsmParser();
+
     CodeGenState *code_gen = new CodeGenState();
     code_gen->target_machine = EngineBuilder().selectTarget();
     code_gen->ir_builder = new IRBuilder<>(code_gen->ctx);
@@ -76,6 +161,7 @@ CodeGenState* code_gen_init() {
     code_gen->module->setDataLayout(code_gen->target_machine->createDataLayout());
     code_gen->module->setTargetTriple(code_gen->target_machine
                                       ->getTargetTriple().normalize());
+    code_gen->jit_state = new JitState(code_gen->target_machine);
     init_builtins(code_gen);
     return code_gen;
 }
@@ -246,6 +332,10 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
                 return code_gen->ir_builder->CreateFDiv(lhs, rhs);
             case Builtin::EqFloat:
                 return code_gen->ir_builder->CreateFCmpUEQ(lhs, rhs);
+            case Builtin::GtFloat:
+                return code_gen->ir_builder->CreateFCmpUGT(lhs, rhs);
+            case Builtin::LtFloat:
+                return code_gen->ir_builder->CreateFCmpULT(lhs, rhs);
             // integer operations
             case Builtin::AddInt:
                 return code_gen->ir_builder->CreateAdd(lhs, rhs);
@@ -452,6 +542,44 @@ void code_gen_all(CodeGenState *code_gen, AstNode *root) {
 }
 
 void code_gen_run_expression(CodeGenState *code_gen, AstNode *expr) {
-    // TODO: JIT compile expression (in anon function) and dependencies.
-    // Run anon function and return a value returned.
+    // Create a void anonymous function taking a pointer to expr type
+    Type *ret_type = Type::getVoidTy(code_gen->ctx);
+    std::vector<Type *> arg_types;
+    arg_types.reserve(1);
+    AstNode *expr_type_ref = expr->inferred_type_ref;
+    Type *expr_type = get_type_by_ref(code_gen, expr_type_ref);
+    Type *arg_type = PointerType::getUnqual(expr_type);
+    arg_types.push_back(arg_type);
+    bool is_var_arg = false;
+    auto linkage = Function::ExternalLinkage;
+    FunctionType *func_type = FunctionType::get(ret_type, arg_types, is_var_arg);
+    std::string func_name = "anonymous";
+    Function *func = llvm::Function::Create(
+        func_type, linkage, func_name, code_gen->module);
+    func->setAttributes(code_gen->default_func_attr);
+    BasicBlock *bb = BasicBlock::Create(code_gen->ctx, "", func);
+    code_gen->ir_builder->SetInsertPoint(bb);
+    
+    // body
+    Function::arg_iterator args = func->arg_begin();
+    Value *ret_addr = args++;
+    Value *expr_value = get_value(code_gen, expr);
+    // store expr value back to the compiler memory
+    code_gen->ir_builder->CreateStore(expr_value, ret_addr);
+    code_gen->ir_builder->CreateRetVoid();
+    verifyFunction(*func);
+
+#if 0
+    printf("CTCE:\n");
+    code_gen->module->dump();
+#endif
+
+    std::unique_ptr<Module> uniq_module {code_gen->module};
+    code_gen->jit_state->addModule(std::move(uniq_module));
+    JITSymbol sym = code_gen->jit_state->findSymbol("anonymous");
+    intptr_t sym_addr = (intptr_t)sym.getAddress();
+    void (*anon_func)(void*) = (void (*)(void*))sym_addr;
+    int32_t result_value;
+    anon_func(&result_value);
+    printf("CTCE result: %d\n", result_value);
 }

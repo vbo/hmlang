@@ -9,6 +9,7 @@
 
 #include "parser.h"
 
+static CodeGenState *ctce;
 #include "enrichment.h"
 
 namespace driver {
@@ -93,6 +94,7 @@ namespace driver {
         // but references types and procedures by name and
         // lacks some information required to do code_gen on it.
         printf("Enrichment...\n");
+        ctce = code_gen_init();
         int enrich_status = enrichment::enrich_all(&global_scope_node);
         if (enrich_status != 0) return enrich_status;
 

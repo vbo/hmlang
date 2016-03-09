@@ -94,7 +94,7 @@ namespace enrichment {
                 if (node->type == AstNode::TypeVariableDeclaration) {
                     if (node->name_tok && node->name_tok->str_content == name) {
                         if (!node->var_decl_enriched) {
-                            return nullptr; // is not declared officially yet
+                            break; // is not declared officially yet
                         }
                         if (scope_node->type != AstNode::TypeGlobalScope && proc_hops > 0) {
                             return nullptr;
@@ -252,6 +252,10 @@ namespace enrichment {
                         return Builtin::DivFloat;
                     case Token::TypeOperatorDoubleEquals:
                         return Builtin::EqFloat;
+                    case Token::TypeOperatorGreater:
+                        return Builtin::GtFloat;
+                    case Token::TypeOperatorLess:
+                        return Builtin::LtFloat;
                     default:
                         return Builtin::OpUnknown;
                 }
@@ -694,6 +698,7 @@ namespace enrichment {
         } else if (expr->type == AstNode::TypeExpressionPoundRun) {
             int status = enrich_expression(expr->pound_run_expr, expr);
             if (status != 0) return status;
+            code_gen_run_expression(ctce, expr->pound_run_expr);
             // TODO: substitute with constant expression
             // containing the return value.
             expr->inferred_type_ref = expr->pound_run_expr->inferred_type_ref;

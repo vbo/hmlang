@@ -27,6 +27,8 @@ namespace Builtin {
         MulFloat,
         DivFloat,
         EqFloat,
+        GtFloat,
+        LtFloat,
         // for two's complement code gen most integer operations are the same for signed and unsigned
         AddInt,
         SubInt,
@@ -39,7 +41,7 @@ namespace Builtin {
         OpLast
     };
 
-    Op ret_bool[] = {EqInt, EqFloat};
+    Op ret_bool[] = {EqInt, EqFloat, GtFloat, LtFloat};
 
     std::string key_void = "void";
 
@@ -73,6 +75,8 @@ struct Token {
         TypeOperatorStar,
         TypeOperatorSlash,
         TypeOperatorDoubleEquals,
+        TypeOperatorGreater,
+        TypeOperatorLess,
         TypeOperatorAmpersand,
         TypeComma,
         TypeArrow,
