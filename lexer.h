@@ -14,13 +14,43 @@ namespace lexer {
     int tokenize_stream(std::istream& infile, const char *fname, std::vector<Token>& tokens) {
         std::string line;
         int line_number = 0;
+        int in_block_comment = 0;
         while(std::getline(infile, line)) {
             line_number++;
             int i = 0;
+            bool in_line_comment = false;
             while (i < line.size()) {
                 char ch = line[i];
                 // skip empty space
                 if (std::isspace(ch)) {
+                    i++;
+                    continue;
+                }
+                // comments
+                if (ch == '/') {
+                    if (i + 1 < line.size()) {
+                        if (line[i + 1] == '*') {
+                            i += 2;
+                            in_block_comment++;
+                            continue;
+                        }
+                        if (line[i + 1] == '/') {
+                            i += 2;
+                            in_line_comment = true;
+                            continue;
+                        }
+                    }
+                }
+                if (in_block_comment > 0) {
+                    if (ch == '*' && i + 1 < line.size() && line[i + 1] == '/') {
+                        i += 2;
+                        in_block_comment--;
+                        continue;
+                    }
+                    i++;
+                    continue;
+                }
+                if (in_line_comment) {
                     i++;
                     continue;
                 }
@@ -76,17 +106,6 @@ namespace lexer {
                 }
                 // punctuation
                 if (std::ispunct(ch)) {
-                    // comments
-                    if (ch == '/') {
-                        if (i + 1 < line.size() && line[i + 1] == '/') {
-                            // line comment
-                            i += 2;
-                            while(i < line.size() && line[i] != '\n') {
-                                i++;
-                            }
-                            continue;
-                        }
-                    }
                     Token& tok = make_token(tokens, fname, Token::TypeUnknown, line_number, i + 1);
                     // TODO: pool out two-char operators logic
                     if (ch == '-') {

@@ -1,4 +1,8 @@
 
+/*
+    blah
+    /* Test */
+*/
 global_thing : s32 = 50;
 global_data : Data;
 

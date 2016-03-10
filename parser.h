@@ -177,7 +177,6 @@ namespace parser {
                             if (!ast_add_child(scope_node, *decl)) return 1;
                             if (!check_tok_type(Token::TypeSemicolon,
                                                 "semicolon after statement")) return 1;
-                            if (!next_tok("global scope continues or ends")) return 1;
                             continue;
                         } else {
                             report_error(expr, "parse error: ");
@@ -185,6 +184,9 @@ namespace parser {
                             return 1;
                         }
                     }
+                } else if (tok.type == Token::TypeSemicolon) {
+                    toki++; // skip top-level semicolon
+                    continue;
                 }
                 report_error(tok, "parse error: ");
                 printf("unexpected token %s\n"
@@ -373,10 +375,7 @@ namespace parser {
             if (!prim) return nullptr;
 
             AstNode *expr = parse_expression_bin_op_rhs(scope, 1, prim);
-            if (!expr) {
-                report_error(expr, "parse error: invalid expression\n");
-                return nullptr;
-            }
+            if (!expr) return nullptr;
             return expr;
         }
 
