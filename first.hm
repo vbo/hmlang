@@ -13,7 +13,9 @@ proc* called_from_c(data: Data*) -> s32 {
     if data.s32_val == 0 || data.s32_val == 42
         x = 74;
 
-    ret x;
+    global_data.s32_val = global_thing + 42;
+
+    ret global_data.s32_val;
 }
 
 

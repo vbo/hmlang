@@ -69,7 +69,7 @@ namespace driver {
         if (lexer_status != 0) return lexer_status;
 
         AstNodePool ast_node_pool;
-        // Builtin scope! This should be done once for the whole copilation unit
+        // Builtin scope! This should be done once for the whole compilation unit
         AstNode& builtin_scope_node = ast_node_pool.add(AstNode::TypeGlobalScope);
         builtin_scope_node.parent_scope = nullptr;
         synthesize_builtin_type_ast(ast_node_pool, builtin_scope_node);

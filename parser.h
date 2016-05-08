@@ -72,56 +72,53 @@ namespace parser {
         }
     };
 
+    std::vector<AstNode*> ast_get_children_by_name(AstNode& parent, const std::string& name) {
+        // TODO: implement a lookup table
+        std::vector<AstNode*> result;
+        for (size_t i = 0; i < parent.child_nodes.size(); ++i) {
+            AstNode *node = parent.child_nodes[i];
+            if (node && node->name_tok && node->name_tok->str_content == name) {
+                result.push_back(node);
+            }
+        }
+        return result;
+    }
+
     bool ast_add_child(AstNode& parent, AstNode& node) {
+        bool need_redef_check = false;
+        const char *entity = "";
+
+        switch (node.type) {
+            case AstNode::TypeTypeDefinition:
+                need_redef_check = true;
+                entity = "type";
+                break;
+            case AstNode::TypeProcedureDefinition:
+                need_redef_check = true;
+                entity = "procedure";
+                break;
+            case AstNode::TypeVariableDeclaration:
+                need_redef_check = true;
+                entity = "variable";
+                break;
+            default:
+                break;
+        }
+
+        if (need_redef_check) {
+            auto& name = node.name_tok->str_content;
+            auto children = ast_get_children_by_name(parent, name);
+            for (auto& it : children) {
+                if (it->type == node.type) {
+                    report_error(node);
+                    printf("error: redefinition of %s %s\n", entity, node.name_tok->str_content.c_str());
+                    report_error(it, " ... defined first time here\n");
+                    return false;
+                }
+            }
+        }
+
         parent.child_nodes.push_back(&node);
-        if (node.type == AstNode::TypeTypeDefinition) {
-            auto& name = node.name_tok->str_content;
-            auto known = parent.child_lookup.find(name);
-            if (known == parent.child_lookup.end()) {
-                parent.child_lookup[name] = {&node};
-            } else {
-                for (auto& it : known->second) {
-                    if (it->type == AstNode::TypeTypeDefinition) {
-                        report_error(node);
-                        printf("error: redefinition of type %s\n", node.name_tok->str_content.c_str());
-                        report_error(it, " ... defined first time here\n");
-                        return false;
-                    }
-                }
-            }
-        }
-        if (node.type == AstNode::TypeProcedureDefinition) {
-            auto& name = node.name_tok->str_content;
-            auto known = parent.child_lookup.find(name);
-            if (known == parent.child_lookup.end()) {
-                parent.child_lookup[name] = {&node};
-            } else {
-                for (auto& it : known->second) {
-                    if (it->type == AstNode::TypeProcedureDefinition) {
-                        report_error(node);
-                        printf("error: redefinition of procedure %s\n", node.name_tok->str_content.c_str());
-                        report_error(it, " ... defined first time here\n");
-                        return false;
-                    }
-                }
-            }
-        }
-        if (node.type == AstNode::TypeVariableDeclaration) {
-            auto& name = node.name_tok->str_content;
-            auto known = parent.child_lookup.find(name);
-            if (known == parent.child_lookup.end()) {
-                parent.child_lookup[name] = {&node};
-            } else {
-                for (auto& it : known->second) {
-                    if (it->type == AstNode::TypeVariableDeclaration) {
-                        report_error(node);
-                        printf("error: redefinition of a variable %s\n", node.name_tok->str_content.c_str());
-                        report_error(it, " ... defined first time here\n");
-                        return false;
-                    }
-                }
-            }
-        }
         return true;
     }
 

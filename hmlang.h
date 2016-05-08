@@ -12,6 +12,7 @@ namespace Builtin {
         Bool,
         TypeLast
     };
+
     enum Op {
         OpUnknown,
         // Unsigned-float operations are inefficient, so we don't provide them!
@@ -247,7 +248,6 @@ struct AstNode {
     AstNode *parent_scope;
     AstNode *inferred_type_ref;
     std::vector<AstNode*> child_nodes;
-    std::map<std::string, std::vector<AstNode*>> child_lookup;
     bool expr_yields_nontemporary;
 
     // used to store various kinds of code gen info =)
