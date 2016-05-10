@@ -118,25 +118,6 @@ namespace enrichment {
         return nullptr;
     }
 
-    AstNode* lookup_procedure(string& name, AstNode *scope_node) {
-        // TODO: copy-pasted from lookup_type
-        // Check current scope
-        // TODO: use child lookup table
-        AST_FOREACH_CHILD(node, scope_node) {
-            if (node->type == AstNode::TypeProcedureDefinition) {
-                if (node->name_tok && node->name_tok->str_content == name) {
-                    return node;
-                }
-            }
-        }
-        // Check parent scope
-        if (scope_node->parent_scope != nullptr) {
-            return lookup_procedure(name, scope_node->parent_scope);
-        }
-        // Not found
-        return nullptr;
-    }
-
     // returns zero if types are equal
     int check_resolved_type_refs_equal(AstNode *a, AstNode *b) {
         // TODO: recode this nonsense
@@ -598,7 +579,8 @@ namespace enrichment {
                 expr->bin_op_lexpr->inferred_type_ref, expr->bin_op_rexpr->inferred_type_ref);
             if (check_status != 0) {
                 report_error(expr, "error: trying to apply a binary operator ");
-                printf("%s to operands of different types: ", expr->name_tok->str_content.c_str());
+                printf("%s to operands of different types: ",
+                       expr->name_tok->str_content.c_str());
                 print_type_ref(expr->bin_op_lexpr->inferred_type_ref);
                 printf(" and ");
                 print_type_ref(expr->bin_op_rexpr->inferred_type_ref);
@@ -636,68 +618,114 @@ namespace enrichment {
             }
             expr->builtin_op = builtin_op;
         } else if (expr->type == AstNode::TypeExpressionCall) {
-            string& name = expr->name_tok->str_content;
-            // we are likely to call function that wasn't enriched yet by itself
-            // we don't need it's body to be correct, but at least arg
-            // and ret types are resolved here
-            AstNode *proc_def_node = lookup_procedure(name, scope);
-            if (proc_def_node == nullptr) {
-                report_error(expr, "error: trying to call an undeclared procedure ");
-                printf("%s\n", name.c_str());
-                return 1;
-            }
-            int proc_status = enrich_proc_definition(proc_def_node);
-            if (proc_status != 0) return proc_status;
-            expr->call_proc_def = proc_def_node;
             // enrich arg expressions
             AST_FOREACH_CHILD(arg_expr, expr) {
                 int status = enrich_expression(arg_expr, scope);
                 if (status != 0) return 1;
             }
-            // TODO: default arguments?
-            if (expr->child_nodes_count != proc_def_node->child_nodes_count) {
-                report_error(expr, "error: incorrect procedure call\n");
-                report_error(proc_def_node, " ... ");
-                printf("%s takes %lu arguments "
-                       "(%lu given)\n", name.c_str(),
-                       proc_def_node->child_nodes_count, expr->child_nodes_count);
-                return 1;
-            }
-            // make sure argument types make sense, we treat call args and decl args as a parallel
-            // lists on this point. Wandering how we could impl default arguments.
-            size_t argi = 0;
-            AstNode *call_arg = expr->child_nodes_list;
-            AstNode *decl_arg = proc_def_node->child_nodes_list;
-            while (argi < expr->child_nodes_count) {
-                AstNode *call_arg_type = call_arg->inferred_type_ref;
-                AstNode *decl_arg_type = decl_arg->var_type_ref;
-                assert(call_arg_type && "was inferred");
-                assert(decl_arg_type && "is known");
-                int decl_arg_resolve_status = resolve_type_ref(
-                    decl_arg_type, proc_def_node->parent_scope, true);
-                if (decl_arg_resolve_status != 0) return decl_arg_resolve_status;
-                int check_status = check_resolved_type_refs_equal(call_arg_type, decl_arg_type);
-                if (check_status != 0) {
-                    report_error(expr, "error: incorrect procedure call: ");
-                    printf("type ");
-                    print_type_ref(decl_arg_type);
-                    printf(" expected, given ");
-                    print_type_ref(call_arg_type);
-                    printf(" for argument %lu when calling %s\n", argi + 1, name.c_str());
-                    report_error(proc_def_node, " <-- procedure defined here\n");
-                    return check_status;
-                }
+            // find the intended proc defitnion
+            string& name = expr->name_tok->str_content;
+            AstNode *scope_node = scope;
+            AstNode *last_variant_proc = nullptr;
+            expr->call_proc_def = nullptr;
+            struct {
+                AstNode *call_arg_type;
+                AstNode *decl_arg_type;
+                size_t argi;
+            } last_arg_type_mismatch_error;
+            while (true) {
+                // Check current scope
+                // TODO: use child lookup table
+                AST_FOREACH_CHILD(proc_def_node, scope_node) {
+                    if (proc_def_node->type != AstNode::TypeProcedureDefinition) continue;
+                    if (proc_def_node->name_tok
+                     && proc_def_node->name_tok->str_content == name) {
+                        last_variant_proc = proc_def_node;
+                        // we are likely to call function that wasn't
+                        // enriched yet by itself we don't need its
+                        // body to be correct, but at least arg
+                        // and ret types are resolved here
+                        int proc_status = enrich_proc_definition(proc_def_node);
+                        if (proc_status != 0) return proc_status;
+                        // TODO: default arguments?
+                        if (expr->child_nodes_count != proc_def_node->child_nodes_count) {
+                            continue;
+                        }
+                        // the proc takes the correct number of arguments
+                        // make sure argument types make sense,
+                        // we treat call args and decl args as a parallel lists on this point.
+                        // Wandering how we could impl default arguments
+                        // and implicit type conversions.
+                        size_t argi = 0;
+                        AstNode *call_arg = expr->child_nodes_list;
+                        AstNode *decl_arg = proc_def_node->child_nodes_list;
+                        bool types_match = true;
+                        while (argi < expr->child_nodes_count) {
+                            AstNode *call_arg_type = call_arg->inferred_type_ref;
+                            AstNode *decl_arg_type = decl_arg->var_type_ref;
+                            assert(call_arg_type && "was inferred");
+                            assert(decl_arg_type && "is known");
+                            int decl_arg_resolve_status = resolve_type_ref(
+                                decl_arg_type, proc_def_node->parent_scope, true);
+                            if (decl_arg_resolve_status != 0) return decl_arg_resolve_status;
+                            int check_status = check_resolved_type_refs_equal(
+                                call_arg_type, decl_arg_type);
+                            if (check_status != 0) {
+                                // type mismatch
+                                last_arg_type_mismatch_error.call_arg_type = call_arg_type;
+                                last_arg_type_mismatch_error.decl_arg_type = decl_arg_type;
+                                last_arg_type_mismatch_error.argi = argi;
+                                types_match = false;
+                                break;
+                            }
 
-                call_arg = call_arg->child_node_next;
-                decl_arg = decl_arg->child_node_next;
-                argi++;
+                            call_arg = call_arg->child_node_next;
+                            decl_arg = decl_arg->child_node_next;
+                            argi++;
+                        }
+                        if (types_match) {
+                            expr->call_proc_def = proc_def_node;
+                            break;
+                        }
+                    }
+                }
+                if (expr->call_proc_def) break;
+                scope_node = scope_node->parent_scope;
+                if (scope_node == nullptr) {
+                    if (last_variant_proc) {
+                        if (expr->child_nodes_count != last_variant_proc->child_nodes_count) {
+                            report_error(expr, "error: incorrect procedure call\n");
+                            report_error(last_variant_proc, " ... ");
+                            // TODO: report all known overloads
+                            // e.g. abc takes 3, 5 or 7 arguments 2 given
+                            printf("%s takes %lu arguments "
+                                   "(%lu given)\n", name.c_str(),
+                                   last_variant_proc->child_nodes_count,
+                                   expr->child_nodes_count);
+                            return 1;
+                        } else {
+                            // TODO: report all known overloads matching arguments count
+                            report_error(expr, "error: incorrect procedure call: ");
+                            printf("type ");
+                            print_type_ref(last_arg_type_mismatch_error.decl_arg_type);
+                            printf(" expected, given ");
+                            print_type_ref(last_arg_type_mismatch_error.call_arg_type);
+                            printf(" for argument %lu when calling %s\n", last_arg_type_mismatch_error.argi + 1, last_variant_proc->name_tok->str_content.c_str());
+                            report_error(last_variant_proc, " <-- procedure defined here\n");
+                        }
+                    }
+                    report_error(expr, "error: trying to call an undeclared procedure ");
+                    printf("%s\n", name.c_str());
+                    return 1;
+                }
             }
             // on this point args are good, infer return type without checks - caller should
             // decide if it's good or not for him to handle.
-            expr->inferred_type_ref = proc_def_node->proc_return_type_ref;
+            expr->inferred_type_ref = expr->call_proc_def->proc_return_type_ref;
             assert(expr->inferred_type_ref && "for call expression");
             // But let's resolve it here just in case =)
-            int resolve_ret_status = resolve_type_ref(expr->inferred_type_ref, proc_def_node->parent_scope);
+            int resolve_ret_status = resolve_type_ref(
+                expr->inferred_type_ref, expr->call_proc_def->parent_scope);
             if (resolve_ret_status != 0) return resolve_ret_status;
         } else if (expr->type == AstNode::TypeExpressionMemberOf) {
             int status = enrich_memberof(expr, scope);

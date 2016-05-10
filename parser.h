@@ -92,10 +92,9 @@ namespace parser {
                 need_redef_check = true;
                 entity = "type";
                 break;
-            case AstNode::TypeProcedureDefinition:
-                need_redef_check = true;
-                entity = "procedure";
-                break;
+            // NOTE: we allow several procedures with the same name
+            // known as function overloads. So don't check uniqueness here.
+            // TODO: check overload redefinition in enrichment.
             case AstNode::TypeVariableDeclaration:
                 need_redef_check = true;
                 entity = "variable";

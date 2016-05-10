@@ -242,10 +242,15 @@ struct AstNode {
     AstNode *parent_scope;
     AstNode *inferred_type_ref;
 
+    // Linked list used to hold ordered "child" nodes:
+    // statements in a block, arguments of proc def/call
     AstNode* child_nodes_list;
     AstNode* child_node_last;
     AstNode* child_node_next;
     size_t child_nodes_count;
+
+    // TODO: named child lookup table
+    // TODO: proc overload lookup table?
 
     bool expr_yields_nontemporary;
 

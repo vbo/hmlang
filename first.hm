@@ -1,7 +1,14 @@
-type Test {
 
-}
+proc add(x: u32, y: u32) -> u32 { ret x + y; }
+proc add(x: s32, y: s32) -> s32 { ret x + y; }
 
-proc* called_from_c(data: Test*) -> s32 {
-    ret 42;
+proc* called_from_c(data: void*) -> s32 {
+    x := 40;
+    y := 2;
+    k := 0;
+    {
+        s := add(x, y);
+        k = s;
+    }
+    ret k;
 }
