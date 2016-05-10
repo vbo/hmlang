@@ -200,8 +200,8 @@ Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool gen_def = true
             if (!node->code_gen_done && gen_def) {
                 StructType *struct_type = (StructType *)node->code_gen_ref;
                 std::vector<Type*> member_types;
-                member_types.reserve(node->child_nodes.size());
-                for (AstNode *member : node->child_nodes) {
+                member_types.reserve(node->child_nodes_count);
+                AST_FOREACH_CHILD(member, node) {
                     AstNode *member_type_ref = member->member_type_ref;
                     Type *code_gen_type = get_type_by_ref(code_gen, member_type_ref, false);
                     member_types.push_back(code_gen_type);
@@ -224,8 +224,8 @@ Function *get_func_for_proc(CodeGenState *code_gen, AstNode *proc_node) {
         AstNode *type_ref = proc_node->proc_return_type_ref;
         Type *ret_type = get_type_by_ref(code_gen, type_ref);
         std::vector<Type *> arg_types;
-        arg_types.reserve(proc_node->child_nodes.size());
-        for (AstNode *arg_node : proc_node->child_nodes) {
+        arg_types.reserve(proc_node->child_nodes_count);
+        AST_FOREACH_CHILD(arg_node, proc_node) {
             AstNode *arg_type_ref = arg_node->var_type_ref;
             Type *arg_type = get_type_by_ref(code_gen, arg_type_ref);
             arg_types.push_back(arg_type);
@@ -296,8 +296,8 @@ Value* get_value(CodeGenState *code_gen, AstNode *expr) {
         AstNode *proc = expr->call_proc_def;
         Function *func = get_func_for_proc(code_gen, proc);
         std::vector<llvm::Value *> call_args;
-        call_args.reserve(expr->child_nodes.size());
-        for (AstNode *arg_expr : expr->child_nodes) {
+        call_args.reserve(expr->child_nodes_count);
+        AST_FOREACH_CHILD(arg_expr, expr) {
             call_args.push_back(get_value(code_gen, arg_expr));
         }
         Value * call_value = code_gen->ir_builder->CreateCall(func, call_args);
@@ -450,7 +450,7 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
         return true;
     } else if (stmt_node->type == AstNode::TypeStatementBlock) {
         bool terminated = false;
-        for (AstNode *sub_stmt : stmt_node->child_nodes) {
+        AST_FOREACH_CHILD(sub_stmt, stmt_node) {
             terminated = code_gen_statement(code_gen, proc_node, sub_stmt);
             if (terminated) break;
         }
@@ -489,7 +489,7 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
 }
 
 void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
-    for (AstNode* node : root->child_nodes) {
+    AST_FOREACH_CHILD(node, root) {
         if (node->type == AstNode::TypeProcedureDefinition) {
             Function *func = get_func_for_proc(code_gen, node);;
             func->setAttributes(code_gen->default_func_attr);
@@ -499,7 +499,7 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
 
             // set arg names for IR, put them to the stack
             Function::arg_iterator args = func->arg_begin();
-            for (AstNode *arg_node : node->child_nodes) {
+            AST_FOREACH_CHILD(arg_node, node) {
                 Value* arg_value = args++;
                 arg_value->setName(arg_node->name_tok->str_content);
                 Type *arg_type = arg_value->getType();
@@ -508,7 +508,7 @@ void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
                 code_gen->ir_builder->CreateStore(arg_value, arg_on_stack);
             }
 
-            for (AstNode *stmt_node : node->proc_body->child_nodes) {
+            AST_FOREACH_CHILD(stmt_node, node->proc_body) {
                 bool terminated = code_gen_statement(code_gen, node, stmt_node);
                 if (terminated) break;
             }

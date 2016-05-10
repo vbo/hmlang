@@ -103,11 +103,6 @@ struct Token {
 };
 
 struct AstNode {
-    // TODO: function type definition:
-    //  - type NoArgsVoid = () -> void
-    //  - type FloatToFloat = (float32) -> float32
-    //  Then you can fn FloatToFloat(x) { return x*x; }
-    //  If you later modify func type you have errors on funcs using it.
     enum Type {
         TypeUnknown,
         TypeTypeDefinition,
@@ -131,8 +126,7 @@ struct AstNode {
         TypeExpressionLiteralNumber,
         TypeExpressionPoundRun,
         TypeGlobalScope,
-        // TODO: do we need a separate structure for these?
-        TypeTypeRefName, // we set resolved_type_name during enrichment
+        TypeTypeRefName,
         TypeTypeRefPointer,
         TypeTypeRefBuiltin
     } type;
@@ -247,7 +241,12 @@ struct AstNode {
     Token *name_tok;
     AstNode *parent_scope;
     AstNode *inferred_type_ref;
-    std::vector<AstNode*> child_nodes;
+
+    AstNode* child_nodes_list;
+    AstNode* child_node_last;
+    AstNode* child_node_next;
+    size_t child_nodes_count;
+
     bool expr_yields_nontemporary;
 
     // used to store various kinds of code gen info =)
@@ -255,10 +254,16 @@ struct AstNode {
     bool code_gen_done;
 };
 
+#define AST_FOREACH_CHILD(it, parent) \
+    for ( \
+        auto it = (parent)->child_nodes_list; \
+        it; \
+        it = it->child_node_next) \
+
+// CodeGen plugin interop
 struct CodeGenState;
 CodeGenState* code_gen_init();
 void code_gen_all(CodeGenState *code_gen, AstNode *root);
 void code_gen_run_expression(CodeGenState *code_gen, AstNode *expr);
 void code_gen_print_result(CodeGenState *code_gen);
 void code_gen_output_result(CodeGenState *code_gen, std::string& out_buf);
-

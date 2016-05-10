@@ -1,36 +1,7 @@
+type Test {
 
-/*
-    blah
-    /* Test */
-*/
-global_thing : s32 = 50;
-global_data : Data;
-
-proc* called_from_c(data: Data*) -> s32 {
-
-    x := 12;
-
-    if data.s32_val == 0 || data.s32_val == 42
-        x = 74;
-
-    global_data.s32_val = global_thing + 42;
-
-    ret global_data.s32_val;
 }
 
-
-type Data {
-    s64_val : s64;
-    u64_val : u64;
-    float64_val : float64;
-
-    s32_val : s32;
-    u32_val : u32;
-    float32_val : float32;
-
-    s16_val : s16;
-    u16_val : u16;
-
-    s8_val : s8;
-    u8_val : u8;
+proc* called_from_c(data: Test*) -> s32 {
+    ret 42;
 }

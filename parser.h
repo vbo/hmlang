@@ -8,15 +8,15 @@ namespace parser {
     // top-level keywords
     // TODO: check Sean Barrett syntax for top level stuff - is it better?
     // TODO: disallow name variable as keywords!
-    string keywordProc = "proc";
-    string keywordType = "type";
-    string keywordRet = "ret";
-    string keywordIf = "if";
-    string keywordElse = "else";
-    string keywordRepeat = "repeat";
-    string keywordBreak = "break";
+    std::string keywordProc = "proc";
+    std::string keywordType = "type";
+    std::string keywordRet = "ret";
+    std::string keywordIf = "if";
+    std::string keywordElse = "else";
+    std::string keywordRepeat = "repeat";
+    std::string keywordBreak = "break";
 
-    string poundRun = "run";
+    std::string poundRun = "run";
 
     // TODO: unary operators
     // TODO: user defined operators?
@@ -75,8 +75,7 @@ namespace parser {
     std::vector<AstNode*> ast_get_children_by_name(AstNode& parent, const std::string& name) {
         // TODO: implement a lookup table
         std::vector<AstNode*> result;
-        for (size_t i = 0; i < parent.child_nodes.size(); ++i) {
-            AstNode *node = parent.child_nodes[i];
+        for (AstNode *node = parent.child_nodes_list; node; node = node->child_node_next) {
             if (node && node->name_tok && node->name_tok->str_content == name) {
                 result.push_back(node);
             }
@@ -118,7 +117,14 @@ namespace parser {
             }
         }
 
-        parent.child_nodes.push_back(&node);
+        auto last = parent.child_node_last;
+        if (!last) {
+            parent.child_nodes_list = &node;
+        } else {
+            last->child_node_next = &node;
+        }
+        parent.child_node_last = &node;
+        parent.child_nodes_count++;
         return true;
     }
 

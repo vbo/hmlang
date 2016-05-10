@@ -7,7 +7,7 @@ LLC="/usr/local/opt/llvm37/bin/llc-3.7"
 OPT="/usr/local/opt/llvm37/bin/opt-3.7"
 
 echo "# Building .hm source to LLVM IR"
-exe build/compiler $2 build/
+exe build/compiler $2 build/$2.out
 if [ $? -eq 0 ]; then echo "# -> Success"; else exit 1; fi
 
 if [ $1 != "-O0" ]; then

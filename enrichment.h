@@ -37,10 +37,10 @@ namespace enrichment {
     }
 
     void print_ast(AstNode* root) {
-        for (AstNode* node : root->child_nodes) {
+        AST_FOREACH_CHILD(node, root) {
             if (node->type == AstNode::TypeProcedureDefinition) {
                 printf("PROC: %s( ", node->name_tok->str_content.c_str());
-                for (AstNode* arg_node : node->child_nodes) {
+                AST_FOREACH_CHILD(arg_node, node) {
                     assert(arg_node->type == AstNode::TypeVariableDeclaration);
                     printf("%s: ", arg_node->name_tok->str_content.c_str());
                     print_type_ref(arg_node->var_type_ref);
@@ -53,7 +53,7 @@ namespace enrichment {
             }
             if (node->type == AstNode::TypeTypeDefinition) {
                 printf("TYPE: %s{ ", node->name_tok->str_content.c_str());
-                for (AstNode* member_node : node->child_nodes) {
+                AST_FOREACH_CHILD(member_node, node) {
                     assert(member_node->type == AstNode::TypeTypeMember);
                     printf("%s: ", member_node->name_tok->str_content.c_str());
                     print_type_ref(member_node->member_type_ref);
@@ -70,7 +70,7 @@ namespace enrichment {
     AstNode* lookup_type(string& name, AstNode *scope_node) {
         // Check current scope
         // TODO: use child lookup table
-        for (AstNode* node : scope_node->child_nodes) {
+        AST_FOREACH_CHILD(node, scope_node) {
             if (node->type == AstNode::TypeTypeDefinition || node->type == AstNode::TypeTypeRefBuiltin) {
                 if (node->name_tok && node->name_tok->str_content == name) {
                     return node;
@@ -90,7 +90,7 @@ namespace enrichment {
         while (true) {
             // Check current scope
             // TODO: use child lookup table
-            for (AstNode* node : scope_node->child_nodes) {
+            AST_FOREACH_CHILD(node, scope_node) {
                 if (node->type == AstNode::TypeVariableDeclaration) {
                     if (node->name_tok && node->name_tok->str_content == name) {
                         if (!node->var_decl_enriched) {
@@ -122,7 +122,7 @@ namespace enrichment {
         // TODO: copy-pasted from lookup_type
         // Check current scope
         // TODO: use child lookup table
-        for (AstNode* node : scope_node->child_nodes) {
+        AST_FOREACH_CHILD(node, scope_node) {
             if (node->type == AstNode::TypeProcedureDefinition) {
                 if (node->name_tok && node->name_tok->str_content == name) {
                     return node;
@@ -391,7 +391,7 @@ namespace enrichment {
         if (!node->type_def_members_enrichment_done) {
             node->type_def_members_enrichment_done = true;
             int member_index = 0;
-            for (AstNode* member_node : node->child_nodes) {
+            AST_FOREACH_CHILD(member_node, node) {
                 assert(member_node->type == AstNode::TypeTypeMember);
                 int resolve_member_status = resolve_type_ref(
                     member_node->member_type_ref, node->parent_scope, true);
@@ -433,7 +433,7 @@ namespace enrichment {
                            container_type_def->name_tok->str_content.c_str());
                     return 1;
                 } else {
-                    for (AstNode *member : node->child_nodes) {
+                    AST_FOREACH_CHILD(member, node) {
                         int resolve_member_status = resolve_type_ref(
                             member->member_type_ref, node->parent_scope, true);
                         if (resolve_member_status != 0) return resolve_member_status;
@@ -458,9 +458,9 @@ namespace enrichment {
     }
 
     int enrich_proc_definition(AstNode *node) {
-        assert(node->type == AstNode::TypeProcedureDefinition);
+        assert(node && node->type == AstNode::TypeProcedureDefinition);
         // arguments (idempotent)
-        for (AstNode *arg_node : node->child_nodes) {
+        AST_FOREACH_CHILD(arg_node, node) {
             assert(arg_node->type == AstNode::TypeVariableDeclaration);
             int resolve_arg_status = resolve_type_ref(
                 arg_node->var_type_ref, node->parent_scope, true);
@@ -475,7 +475,7 @@ namespace enrichment {
             node->proc_body_enriched = true;
             // body
             bool has_ret = false;
-            for (AstNode *stmt_node : node->proc_body->child_nodes) {
+            AST_FOREACH_CHILD(stmt_node, node->proc_body) {
                 bool stmt_has_ret = false;
                 int status = enrich_statement(
                     node, node->proc_body, stmt_node, nullptr, stmt_has_ret);
@@ -510,7 +510,7 @@ namespace enrichment {
                 return 1;
             }
             bool found = false;
-            for (AstNode *udt_member : udt->child_nodes) {
+            AST_FOREACH_CHILD(udt_member, udt) {
                 if (udt_member->name_tok->str_content == member_name) {
                     expr->memberof_member = udt_member;
                     int type_status = resolve_type_ref(udt_member->member_type_ref, udt, true);
@@ -650,24 +650,27 @@ namespace enrichment {
             if (proc_status != 0) return proc_status;
             expr->call_proc_def = proc_def_node;
             // enrich arg expressions
-            for (AstNode *arg_expr : expr->child_nodes) {
+            AST_FOREACH_CHILD(arg_expr, expr) {
                 int status = enrich_expression(arg_expr, scope);
                 if (status != 0) return 1;
             }
             // TODO: default arguments?
-            if (expr->child_nodes.size() != proc_def_node->child_nodes.size()) {
+            if (expr->child_nodes_count != proc_def_node->child_nodes_count) {
                 report_error(expr, "error: incorrect procedure call\n");
                 report_error(proc_def_node, " ... ");
                 printf("%s takes %lu arguments "
                        "(%lu given)\n", name.c_str(),
-                       proc_def_node->child_nodes.size(), expr->child_nodes.size());
+                       proc_def_node->child_nodes_count, expr->child_nodes_count);
                 return 1;
             }
             // make sure argument types make sense, we treat call args and decl args as a parallel
-            // array on this point. Wandering how we could impl default arguments.
-            for (size_t argi = 0; argi < expr->child_nodes.size(); ++argi) {
-                AstNode *call_arg_type = expr->child_nodes[argi]->inferred_type_ref;
-                AstNode *decl_arg_type = proc_def_node->child_nodes[argi]->var_type_ref;
+            // lists on this point. Wandering how we could impl default arguments.
+            size_t argi = 0;
+            AstNode *call_arg = expr->child_nodes_list;
+            AstNode *decl_arg = proc_def_node->child_nodes_list;
+            while (argi < expr->child_nodes_count) {
+                AstNode *call_arg_type = call_arg->inferred_type_ref;
+                AstNode *decl_arg_type = decl_arg->var_type_ref;
                 assert(call_arg_type && "was inferred");
                 assert(decl_arg_type && "is known");
                 int decl_arg_resolve_status = resolve_type_ref(
@@ -684,6 +687,10 @@ namespace enrichment {
                     report_error(proc_def_node, " <-- procedure defined here\n");
                     return check_status;
                 }
+
+                call_arg = call_arg->child_node_next;
+                decl_arg = decl_arg->child_node_next;
+                argi++;
             }
             // on this point args are good, infer return type without checks - caller should
             // decide if it's good or not for him to handle.
@@ -827,8 +834,9 @@ namespace enrichment {
             has_ret = then_has_ret && else_has_ret;
             return 0;
         } else if (stmt_node->type == AstNode::TypeStatementBlock) {
+            // TODO: has_ret logic is not tested and probably doesn't work
             bool block_has_ret = false;
-            for (AstNode *stmt_in_block_node : stmt_node->child_nodes) {
+            AST_FOREACH_CHILD(stmt_in_block_node, stmt_node) {
                 bool stmt_has_ret = false;
                 int status = enrich_statement(
                     proc, stmt_node, stmt_in_block_node, loop_node, stmt_has_ret);
@@ -904,7 +912,7 @@ namespace enrichment {
     }
 
     int enrich_scope(AstNode *root) {
-        for (AstNode* node : root->child_nodes) {
+        AST_FOREACH_CHILD(node, root) {
             // While type and procedure definitions are enriched as we go
             // we should do it here to make sure the whole
             // program is correct even if this type is not used anywhere by value

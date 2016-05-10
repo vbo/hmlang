@@ -53,19 +53,20 @@ namespace driver {
 
     int main(int argc, char **argv) {
         if (argc < 3) {
-            printf("Usage: %s <source file> <output dir>\n", argv[0]);
+            printf("Usage: %s <source file> <output file>\n", argv[0]);
             return 1;
         }
 
         // That's just a starting file.
         // TODO: include/import or something
-        string infilename(argv[1]);
-        string outfilename = string(argv[2]) + infilename + string(".out");
+        std::string infilename(argv[1]);
+        std::string outfilename = string(argv[2]);
         std::ifstream infile(infilename);
 
         printf("Lexing...\n");
         std::vector<Token> source_tokens;
-        int lexer_status = lexer::tokenize_stream(infile, infilename.c_str(), source_tokens);
+        int lexer_status = lexer::tokenize_stream(
+            infile, infilename.c_str(), source_tokens);
         if (lexer_status != 0) return lexer_status;
 
         AstNodePool ast_node_pool;
