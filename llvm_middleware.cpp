@@ -179,42 +179,38 @@ void code_gen_output_result(CodeGenState *code_gen, std::string& out_buf) {
 }
 
 Type* get_type_by_ref(CodeGenState *code_gen, AstNode *node, bool gen_def = true) {
-    while (true) {
-        if (node->type == AstNode::TypeTypeRefName) {
-            node = node->resolved_type_ref;
-            continue;
-        } else if (node->type == AstNode::TypeTypeRefBuiltin) {
-            return get_builtin_type(code_gen, node->builtin_type);
-        } else if (node->type == AstNode::TypeTypeRefPointer) {
-            Type *pointee_type = get_type_by_ref(code_gen, node->pointee_type_ref);
-            if (pointee_type->isVoidTy()) {
-                pointee_type = Type::getInt8Ty(code_gen->ctx);
-            }
-            return PointerType::getUnqual(pointee_type);
-        } else if (node->type == AstNode::TypeTypeDefinition) {
-            if (!node->code_gen_ref) {
-                StructType *struct_type = StructType::create(code_gen->ctx, node->name_tok->str_content);
-                node->code_gen_ref = struct_type;
-                node->code_gen_done = false;
-            }
-            if (!node->code_gen_done && gen_def) {
-                StructType *struct_type = (StructType *)node->code_gen_ref;
-                std::vector<Type*> member_types;
-                member_types.reserve(node->child_nodes_count);
-                AST_FOREACH_CHILD(member, node) {
-                    AstNode *member_type_ref = member->member_type_ref;
-                    Type *code_gen_type = get_type_by_ref(code_gen, member_type_ref, false);
-                    member_types.push_back(code_gen_type);
-                }
-                bool is_opaque = false;
-                struct_type->setBody(member_types, is_opaque);
-                node->code_gen_done = true;
-            }
-            return (StructType *)node->code_gen_ref;
-        } else {
-            printf("Code gen panic: unknown type ref type %d\n", node->type);
-            assert(false && "unreachable");
+    if (node->type == AstNode::TypeTypeRefBuiltin) {
+        return get_builtin_type(code_gen, node->builtin_type);
+    } else if (node->type == AstNode::TypeTypeRefPointer) {
+        Type *pointee_type = get_type_by_ref(code_gen, node->pointee_type_ref);
+        if (pointee_type->isVoidTy()) {
+            pointee_type = Type::getInt8Ty(code_gen->ctx);
         }
+        return PointerType::getUnqual(pointee_type);
+    } else if (node->type == AstNode::TypeTypeRefUserDefined) {
+        AstNode *type_node = node->user_defined_type_def;
+        if (!type_node->code_gen_ref) {
+            StructType *struct_type = StructType::create(code_gen->ctx, type_node->name_tok->str_content);
+            type_node->code_gen_ref = struct_type;
+            type_node->code_gen_done = false;
+        }
+        if (!type_node->code_gen_done && gen_def) {
+            StructType *struct_type = (StructType *)type_node->code_gen_ref;
+            std::vector<Type*> member_types;
+            member_types.reserve(type_node->child_nodes_count);
+            AST_FOREACH_CHILD(member, type_node) {
+                AstNode *member_type_ref = member->member_type_ref;
+                Type *code_gen_type = get_type_by_ref(code_gen, member_type_ref, false);
+                member_types.push_back(code_gen_type);
+            }
+            bool is_opaque = false;
+            struct_type->setBody(member_types, is_opaque);
+            type_node->code_gen_done = true;
+        }
+        return (StructType *)type_node->code_gen_ref;
+    } else {
+        printf("Code gen panic: unknown type ref type %d\n", node->type);
+        assert(false && "unreachable");
     }
 }
 

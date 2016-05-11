@@ -13,13 +13,8 @@ namespace enrichment {
     void print_type_ref(AstNode* node) {
         while (true) {
             if (node->type == AstNode::TypeTypeRefName) {
-                if (node->resolved_type_ref) {
-                    node = node->resolved_type_ref;
-                    continue;
-                } else {
-                    printf("~>%s", node->name_tok->str_content.c_str());
-                    break;
-                }
+                printf("~>%s", node->name_tok->str_content.c_str());
+                break;
             } else if (node->type == AstNode::TypeTypeRefBuiltin) {
                 printf("#%s", node->name_tok->str_content.c_str());
                 break;
@@ -27,7 +22,7 @@ namespace enrichment {
                 print_type_ref(node->pointee_type_ref);
                 printf("*");
                 break;
-            } else if (node->type == AstNode::TypeTypeDefinition) {
+            } else if (node->type == AstNode::TypeTypeRefUserDefined) {
                 printf("!%s", node->name_tok->str_content.c_str());
                 break;
             }
@@ -124,25 +119,11 @@ namespace enrichment {
         while (true) {
             assert(a && "type for type equality check");
             assert(b && "type for type equality check");
-            if (a->type == AstNode::TypeTypeRefName) {
-                a = a->resolved_type_ref;
-                if (!a) {
-                    assert(false && "type equality check is called with unresolved type refs");
-                    return 1;
-                }
-                continue;
-            }
-            if (b->type == AstNode::TypeTypeRefName) {
-                b = b->resolved_type_ref;
-                if (!b) {
-                    assert(false && "type equality check is called with unresolved type refs");
-                    return 1;
-                }
-                continue;
-            }
             if (a->type == AstNode::TypeTypeRefName || b->type == AstNode::TypeTypeRefName) {
-                return 1;
-            } else if (a->type == AstNode::TypeTypeRefBuiltin) {
+                assert(false && "type equality check is called with unresolved type refs");
+                continue;
+            }
+            if (a->type == AstNode::TypeTypeRefBuiltin) {
                 if (b->type != AstNode::TypeTypeRefBuiltin) {
                     return 1;
                 }
@@ -159,11 +140,11 @@ namespace enrichment {
                     a->pointee_type_ref,
                     b->pointee_type_ref
                 );
-            } else if (a->type == AstNode::TypeTypeDefinition) {
-                if (b->type != AstNode::TypeTypeDefinition) {
+            } else if (a->type == AstNode::TypeTypeRefUserDefined) {
+                if (b->type != AstNode::TypeTypeRefUserDefined) {
                     return 1;
                 }
-                if (a != b) {
+                if (a->user_defined_type_def != b->user_defined_type_def) {
                     return 1;
                 } else {
                     return 0; // equal!
@@ -176,42 +157,24 @@ namespace enrichment {
     }
 
     Builtin::Type builtin_type_for_resolved_ref(AstNode *node) {
-        while (true) {
-            if (node->type == AstNode::TypeTypeRefName) {
-                node = node->resolved_type_ref;
-                if (!node) {
-                    assert(false && "not resolved type ref!");
-                    return Builtin::TypeUnknown;
-                }
-                continue;
-            } else if (node->type == AstNode::TypeTypeRefBuiltin) {
-                return node->builtin_type;
-            } else {
-                break;
-            }
+        if (node->type == AstNode::TypeTypeRefName) {
+            assert(false && "not resolved type ref!");
+        } else if (node->type == AstNode::TypeTypeRefBuiltin) {
+            return node->builtin_type;
         }
         return Builtin::TypeUnknown;
     }
 
     AstNode* user_type_for_resolved_ref(AstNode *node) {
-        // TODO: copy-pasted from builtin_type_for_resolved_ref
-        while (true) {
-            if (node->type == AstNode::TypeTypeRefName) {
-                node = node->resolved_type_ref;
-                if (!node) {
-                    assert(false && "I thought you have a resolved type ref!");
-                    return nullptr;
-                }
-                continue;
-            } else if (node->type == AstNode::TypeTypeRefPointer) {
-                return user_type_for_resolved_ref(node->pointee_type_ref);
-            } else if (node->type == AstNode::TypeTypeDefinition) {
-                return node;
-            } else if (node->type == AstNode::TypeTypeRefBuiltin) {
-                return nullptr;
-            } else {
-                break;
-            }
+        if (node->type == AstNode::TypeTypeRefName) {
+            assert(false && "I thought you have a resolved type ref!");
+            return nullptr;
+        } else if (node->type == AstNode::TypeTypeRefPointer) {
+            return user_type_for_resolved_ref(node->pointee_type_ref);
+        } else if (node->type == AstNode::TypeTypeRefUserDefined) {
+            return node->user_defined_type_def;
+        } else if (node->type == AstNode::TypeTypeRefBuiltin) {
+            return nullptr;
         }
         printf("Can't find udt for ref type %d\n", node->type);
         assert(false && "I thought you have a resolved type ref!");
@@ -306,7 +269,7 @@ namespace enrichment {
 
     int check_resolved_type_ref_finite(AstNode *node, AstNode *container_type_def);
     int enrich_type_definition(AstNode *node);
-    int resolve_type_ref(AstNode *node, AstNode *scope_node, bool disallow_void = false) {
+    int resolve_type_ref(AstNode *node, AstNode *scope_node) {
         // This is called when we have a type ref but not sure if it makes sense.
         // E.g. when declaring a variable we specify type by name, but what does
         // this name actually mean, right?
@@ -317,30 +280,25 @@ namespace enrichment {
             // (definition or builtin) for a name in a given scope.
             // We resolve looked up type as well recursively and put a pointer to it
             // in resolved_type_ref field.
-            if (node->resolved_type_ref) {
-                // Was already resolved before. Do nothing.
-                return 0;
-            }
             Token* type_name_tok = node->name_tok;
-            AstNode *resolved_type_node = lookup_type(
-                type_name_tok->str_content, scope_node);
+            AstNode *resolved_type_node = lookup_type(type_name_tok->str_content, scope_node);
             if (!resolved_type_node) {
                 report_error(type_name_tok, "error: unresolved type ");
                 printf("%s\n", type_name_tok->str_content.c_str());
                 return 1;
             } else {
-                int status = resolve_type_ref(
-                    resolved_type_node, scope_node, disallow_void);
-                if (status != 0) return status;
-                // TODO: that's probably not a good place
-                if (disallow_void) {
-                    if (resolved_type_node->type == AstNode::TypeTypeRefBuiltin &&
-                        resolved_type_node->builtin_type == Builtin::Void) {
-                        report_error(node, "error: can't use void here\n");
-                        return 1;
-                    }
+                if (resolved_type_node->type == AstNode::TypeTypeRefBuiltin) {
+                    node->type = AstNode::TypeTypeRefBuiltin;
+                    node->builtin_type = resolved_type_node->builtin_type;
+                } else if (resolved_type_node->type == AstNode::TypeTypeDefinition) {
+                    int status = enrich_type_definition(resolved_type_node);
+                    if (status != 0) return status;
+                    node->type = AstNode::TypeTypeRefUserDefined;
+                    node->user_defined_type_def = resolved_type_node;
+                } else {
+                    assert(false && "resolved type is not builtin nor udt. wtf?");
+                    return 1;
                 }
-                node->resolved_type_ref = resolved_type_node;
             }
             return 0;
         } else if (node->type == AstNode::TypeTypeRefPointer) {
@@ -352,16 +310,17 @@ namespace enrichment {
             // Count builtin as already resolved - we don't know much about them,
             // but they should be implemented by code_gen somehow.
             return 0;
-        } else if (node->type == AstNode::TypeTypeDefinition) {
+        } else if (node->type == AstNode::TypeTypeRefUserDefined) {
             // If we found a definition the type is resolved,
             // but what if definition itself doesn't make sense?
             // While we should on some point come to this definition
             // in the main loop let's do this here as well, so
             // the type is ready to be coded right away.
-            int status = enrich_type_definition(node);
+            int status = enrich_type_definition(node->user_defined_type_def);
             if (status != 0) return status;
             return 0;
         }
+        report_error(node, "oops");
         printf("Don't know how to resolve type ref %d\n", node->type);
         assert(false && "unreachable");
         return 1;
@@ -375,8 +334,13 @@ namespace enrichment {
             AST_FOREACH_CHILD(member_node, node) {
                 assert(member_node->type == AstNode::TypeTypeMember);
                 int resolve_member_status = resolve_type_ref(
-                    member_node->member_type_ref, node->parent_scope, true);
+                    member_node->member_type_ref, node->parent_scope);
                 if (resolve_member_status != 0) return resolve_member_status;
+                if (member_node->member_type_ref->type == AstNode::TypeTypeRefBuiltin
+                 && member_node->member_type_ref->builtin_type == Builtin::Void) {
+                    report_error(member_node, "member can't be of type void!\n");
+                    return 1;
+                }
                 int finiteness_check_status = check_resolved_type_ref_finite(
                     member_node->member_type_ref, node);
                 if (finiteness_check_status != 0) {
@@ -393,49 +357,41 @@ namespace enrichment {
     }
 
     int check_resolved_type_ref_finite(AstNode *node, AstNode *container_type_def) {
-        while (true) {
-            if (node->type == AstNode::TypeTypeRefName) {
-                if (!node->resolved_type_ref) {
-                    assert(false && "is it unresolved type?");
-                    return 1;
-                }
-                node = node->resolved_type_ref;
-                continue;
-            } else if (node->type == AstNode::TypeTypeRefBuiltin) {
-                // builtins are always finite
-                return 0;
-            } else if (node->type == AstNode::TypeTypeRefPointer) {
-                // pointers are always finite
-                return 0;
-            } else if (node->type == AstNode::TypeTypeDefinition) {
-                if (node == container_type_def) {
-                    report_error(container_type_def, "error: infinite type ");
-                    printf("%s depends on itself\n",
-                           container_type_def->name_tok->str_content.c_str());
-                    return 1;
-                } else {
-                    AST_FOREACH_CHILD(member, node) {
-                        int resolve_member_status = resolve_type_ref(
-                            member->member_type_ref, node->parent_scope, true);
-                        if (resolve_member_status != 0) return resolve_member_status;
-                        int member_finiteness_status = check_resolved_type_ref_finite(
-                            member->member_type_ref, container_type_def);
-                        if (member_finiteness_status != 0) {
-                            report_error(member, " ... ");
-                            printf("through the member %s of %s\n",
-                                   member->name_tok->str_content.c_str(),
-                                   node->name_tok->str_content.c_str());
-                            return member_finiteness_status;
-                        }
+        if (node->type == AstNode::TypeTypeRefName) {
+            assert(false && "is it unresolved type?");
+            return 1;
+        } else if (node->type == AstNode::TypeTypeRefBuiltin) {
+            return 0; // builtins are always finite
+        } else if (node->type == AstNode::TypeTypeRefPointer) {
+            return 0; // pointers are always finite
+        } else if (node->type == AstNode::TypeTypeRefUserDefined) {
+            if (node->user_defined_type_def == container_type_def) {
+                report_error(container_type_def, "error: infinite type ");
+                printf("%s depends on itself\n",
+                       container_type_def->name_tok->str_content.c_str());
+                return 1;
+            } else {
+                AST_FOREACH_CHILD(member, node->user_defined_type_def) {
+                    int resolve_member_status = resolve_type_ref(
+                        member->member_type_ref, node->user_defined_type_def->parent_scope);
+                    if (resolve_member_status != 0) return resolve_member_status;
+                    int member_finiteness_status = check_resolved_type_ref_finite(
+                        member->member_type_ref, container_type_def);
+                    if (member_finiteness_status != 0) {
+                        report_error(member, " ... ");
+                        printf("through the member %s of %s\n",
+                               member->name_tok->str_content.c_str(),
+                               node->user_defined_type_def->name_tok->str_content.c_str());
+                        return member_finiteness_status;
                     }
-                    return 0;
                 }
+                return 0;
             }
             printf("Don't know how to check finiteness of type ref %d\n", node->type);
             assert(false && "unreachable");
             return 1;
         }
-        return 563;
+        return 1;
     }
 
     int enrich_proc_definition(AstNode *node) {
@@ -444,8 +400,13 @@ namespace enrichment {
         AST_FOREACH_CHILD(arg_node, node) {
             assert(arg_node->type == AstNode::TypeVariableDeclaration);
             int resolve_arg_status = resolve_type_ref(
-                arg_node->var_type_ref, node->parent_scope, true);
+                arg_node->var_type_ref, node->parent_scope);
             if (resolve_arg_status != 0) return resolve_arg_status;
+            if (arg_node->var_type_ref->type == AstNode::TypeTypeRefBuiltin
+             && arg_node->var_type_ref->builtin_type == Builtin::Void) {
+                report_error(arg_node, "proc argument can't have void type!\n");
+                return 1;
+            }
             arg_node->var_decl_enriched = true;
         }
         // return type (idempotent)
@@ -494,7 +455,7 @@ namespace enrichment {
             AST_FOREACH_CHILD(udt_member, udt) {
                 if (udt_member->name_tok->str_content == member_name) {
                     expr->memberof_member = udt_member;
-                    int type_status = resolve_type_ref(udt_member->member_type_ref, udt, true);
+                    int type_status = resolve_type_ref(udt_member->member_type_ref, udt);
                     if (type_status != 0) return type_status;
                     expr->inferred_type_ref = udt_member->member_type_ref;
                     found = true;
@@ -517,7 +478,7 @@ namespace enrichment {
                 return 1;
             }
             expr->resolved_var = variable_node;
-            int type_status = resolve_type_ref(variable_node->var_type_ref, scope, true);
+            int type_status = resolve_type_ref(variable_node->var_type_ref, scope);
             if (type_status != 0) return type_status;
             expr->inferred_type_ref = variable_node->var_type_ref;
             expr->expr_yields_nontemporary = true;
@@ -668,7 +629,7 @@ namespace enrichment {
                             assert(call_arg_type && "was inferred");
                             assert(decl_arg_type && "is known");
                             int decl_arg_resolve_status = resolve_type_ref(
-                                decl_arg_type, proc_def_node->parent_scope, true);
+                                decl_arg_type, proc_def_node->parent_scope);
                             if (decl_arg_resolve_status != 0) return decl_arg_resolve_status;
                             int check_status = check_resolved_type_refs_equal(
                                 call_arg_type, decl_arg_type);
@@ -791,9 +752,13 @@ namespace enrichment {
             }
             stmt_node->var_type_ref = stmt_node->var_init_expr->inferred_type_ref;
         }
-        int resolve_status = resolve_type_ref(
-            stmt_node->var_type_ref, parent_block, true);
+        int resolve_status = resolve_type_ref(stmt_node->var_type_ref, parent_block);
         if (resolve_status != 0) return resolve_status;
+        if (stmt_node->var_type_ref->type == AstNode::TypeTypeRefBuiltin
+         && stmt_node->var_type_ref->builtin_type == Builtin::Void) {
+            report_error(stmt_node, "can't declare a variable of type void!\n");
+            return 1;
+        }
         if (stmt_node->var_init_expr) {
             int type_cmp_status = check_resolved_type_refs_equal(
                 stmt_node->var_type_ref,

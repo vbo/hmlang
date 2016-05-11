@@ -128,7 +128,8 @@ struct AstNode {
         TypeGlobalScope,
         TypeTypeRefName,
         TypeTypeRefPointer,
-        TypeTypeRefBuiltin
+        TypeTypeRefBuiltin,
+        TypeTypeRefUserDefined
     } type;
 
     union {
@@ -225,14 +226,16 @@ struct AstNode {
         struct { // TypeGlobalScope
             // has parent_scope
         };
-        struct { // TypeTypeRefName
-            AstNode *resolved_type_ref;
+        struct { // TypeTypeRefName (exists only for parsing)
         };
         struct { // TypeTypeRefPointer
             AstNode *pointee_type_ref;
         };
         struct { // TypeTypeRefBuiltin
             Builtin::Type builtin_type;
+        };
+        struct { // TypeTypeRefUserDefined
+            AstNode *user_defined_type_def;
         };
     };
 

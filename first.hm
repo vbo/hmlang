@@ -1,10 +1,17 @@
+// void
+// float32
+// float64
+
 
 proc add(x: u32, y: u32) -> u32 { ret x + y; }
 proc add(x: s32, y: s32) -> s32 { ret x + y; }
 
-proc* called_from_c(data: void*) -> s32 {
+
+type Data {
+}
+
+proc* called_from_c(data: void**) -> s32 {
     x := 40;
-    p := *data;
     y := 2;
     k := 0;
     {
