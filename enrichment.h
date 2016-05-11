@@ -755,8 +755,8 @@ namespace enrichment {
                 return 1;
             }
             expr->inferred_type_ref = expr->deref_expr->inferred_type_ref->pointee_type_ref;
-            if (expr->inferred_type_ref->type == AstNode::TypeTypeRefName &&
-                expr->inferred_type_ref->resolved_type_ref->builtin_type == Builtin::Void) {
+            if (expr->inferred_type_ref->type == AstNode::TypeTypeRefBuiltin &&
+                expr->inferred_type_ref->builtin_type == Builtin::Void) {
                 report_error(expr, "error: can't dereference a value of a void-pointer type\n");
                 return 1;
             }
