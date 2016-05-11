@@ -14,7 +14,7 @@ proc* called_from_c(data: void**) -> s32 {
     x := 40;
     y := 2;
     k := 0;
-    {
+    repeat {
         s := add(x, y);
         k = s;
     }

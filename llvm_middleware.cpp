@@ -465,7 +465,12 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
     } else if (stmt_node->type == AstNode::TypeVariableDeclaration) {
         AstNode *var_type_ref = stmt_node->var_type_ref;
         Type *var_type = get_type_by_ref(code_gen, var_type_ref);
+        // We need to create allocas in entry basic block only (e.g. if we are in a loop
+        // we don't want to push on each iteration.
+        llvm::IRBuilderBase::InsertPoint current_ip = code_gen->ir_builder->saveIP();
+        code_gen->ir_builder->SetInsertPoint(&func->getEntryBlock(), func->getEntryBlock().begin());
         AllocaInst *var_on_stack = code_gen->ir_builder->CreateAlloca(var_type);
+        code_gen->ir_builder->restoreIP(current_ip);
         stmt_node->code_gen_ref = var_on_stack;
         if (stmt_node->var_init_expr) {
             Value *init_value = get_value(code_gen, stmt_node->var_init_expr);
@@ -487,7 +492,7 @@ bool code_gen_statement(CodeGenState *code_gen, AstNode *proc_node, AstNode *stm
 void code_gen_scope(CodeGenState *code_gen, AstNode *root) {
     AST_FOREACH_CHILD(node, root) {
         if (node->type == AstNode::TypeProcedureDefinition) {
-            Function *func = get_func_for_proc(code_gen, node);;
+            Function *func = get_func_for_proc(code_gen, node);
             func->setAttributes(code_gen->default_func_attr);
             assert(node->proc_body && "code gen does't support external proc yet");
             BasicBlock *bb = BasicBlock::Create(code_gen->ctx, "", func);
