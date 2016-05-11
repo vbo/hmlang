@@ -576,7 +576,8 @@ namespace enrichment {
             int status_right = enrich_expression(expr->bin_op_rexpr, scope);
             if (status_right != 0) return 1;
             int check_status = check_resolved_type_refs_equal(
-                expr->bin_op_lexpr->inferred_type_ref, expr->bin_op_rexpr->inferred_type_ref);
+                expr->bin_op_lexpr->inferred_type_ref,
+                expr->bin_op_rexpr->inferred_type_ref);
             if (check_status != 0) {
                 report_error(expr, "error: trying to apply a binary operator ");
                 printf("%s to operands of different types: ",
@@ -591,7 +592,8 @@ namespace enrichment {
                 expr->bin_op_lexpr->inferred_type_ref);
             if (operand_type == Builtin::TypeUnknown) {
                 report_error(expr, "error: trying to apply a binary operator ");
-                printf("%s to operands of user defined type: ", expr->name_tok->str_content.c_str());
+                printf("%s to operands of user defined type: ",
+                       expr->name_tok->str_content.c_str());
                 print_type_ref(expr->bin_op_lexpr->inferred_type_ref);
                 printf("\n");
                 return 1;
@@ -753,6 +755,11 @@ namespace enrichment {
                 return 1;
             }
             expr->inferred_type_ref = expr->deref_expr->inferred_type_ref->pointee_type_ref;
+            if (expr->inferred_type_ref->type == AstNode::TypeTypeRefName &&
+                expr->inferred_type_ref->resolved_type_ref->builtin_type == Builtin::Void) {
+                report_error(expr, "error: can't dereference a value of a void-pointer type\n");
+                return 1;
+            }
         } else if (expr->type == AstNode::TypeExpressionPoundRun) {
             int status = enrich_expression(expr->pound_run_expr, expr);
             if (status != 0) return status;

@@ -1,7 +1,8 @@
 namespace lexer {
     using errors::report_error;
 
-    Token& make_token(std::vector<Token>& tokens, const char *filename, Token::Type tok_type, int line_number, int column_number) {
+    Token& make_token(std::vector<Token>& tokens, const char *filename,
+                      Token::Type tok_type, int line_number, int column_number) {
         tokens.emplace_back();
         Token &tok = tokens.back();
         tok.type = tok_type;
@@ -209,7 +210,8 @@ namespace lexer {
                     i++;
                     continue;
                 }
-                Token& tok = make_token(tokens, fname, Token::TypeUnknown, line_number, i + 1);
+                Token& tok = make_token(
+                    tokens, fname, Token::TypeUnknown, line_number, i + 1);
                 report_error(&tok, "lexer error: invalid token\n");
                 return 1;
             }

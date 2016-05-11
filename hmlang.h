@@ -208,7 +208,7 @@ struct AstNode {
         struct { // TypeExpressionAddressOf
             AstNode *addressof_expr;
             // just a holder: 
-            AstNode *addressof_type_ref; // don't use if you are nor enriching!
+            AstNode *addressof_type_ref; // don't use if you are not enriching!
             // has inferred_type_ref
         };
         struct { // TypeExpressionDereference

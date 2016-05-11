@@ -86,7 +86,6 @@ namespace parser {
     bool ast_add_child(AstNode& parent, AstNode& node) {
         bool need_redef_check = false;
         const char *entity = "";
-
         switch (node.type) {
             case AstNode::TypeTypeDefinition:
                 need_redef_check = true;
@@ -109,7 +108,8 @@ namespace parser {
             for (auto& it : children) {
                 if (it->type == node.type) {
                     report_error(node);
-                    printf("error: redefinition of %s %s\n", entity, node.name_tok->str_content.c_str());
+                    printf("error: redefinition of %s %s\n",
+                           entity, node.name_tok->str_content.c_str());
                     report_error(it, " ... defined first time here\n");
                     return false;
                 }
