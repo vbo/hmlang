@@ -1,0 +1,47 @@
+type Data {
+    s64_val : s64;
+    u64_val : u64;
+    float64_val : float64;
+
+    s32_val : s32;
+    u32_val : u32;
+    float32_val : float32;
+
+    s16_val : s16;
+    u16_val : u16;
+
+    s8_val : s8;
+    u8_val : u8;
+}
+
+global_thing : s32 = 50;
+global_data : Data;
+
+proc* called_from_c(data: Data*) -> s32 {
+    x := (add(8, p42())) + global_thing;
+
+    global_data.s32_val = 42;
+
+    data.s64_val = data.s64_val + data.s64_val;
+    data.s32_val = data.s32_val + data.s32_val + global_data.s32_val;
+    data.s16_val = data.s16_val + data.s16_val;
+    data.s8_val = data.s8_val + data.s8_val;
+
+    data.u64_val = data.u64_val + data.u64_val;
+    data.u32_val = data.u32_val + data.u32_val;
+    data.u16_val = data.u16_val + data.u16_val;
+    data.u8_val = data.u8_val + data.u8_val;
+
+    data.float64_val = data.float64_val + data.float64_val;
+    data.float32_val = data.float32_val + data.float32_val;
+
+    ret x;
+
+    proc p42() -> s32 { ret 42; }
+}
+
+
+proc add(x: s32, y: s32) -> s32 {
+    ret x + y;
+}
+
