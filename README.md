@@ -13,4 +13,4 @@ A toy programming language compiler with LLVM backend:
 
 See example.hm for some examples in hmlang itself. Try shell scripts included to build the compiler and compile/execute the example.
 
-There are a lot of missing functionality and some interesting work-in-progress features (e.g. compile time code execution). I think the project serves as a good mostly complete example on how to make a compiler and use LLVM to generate native code. The 'Handmade' in the name is a tribute to Handmade Hero project. The work was also inspired by Jai programming language.
+There are a lot of missing functionality and some interesting work-in-progress features (e.g. compile time code execution). I think the project serves as a good mostly complete example on how to make a compiler and use LLVM to generate native code. The 'Handmade' in the name is a tribute to [Handmade Hero](https://handmadehero.org/) project. The work was also inspired by [Jai](https://www.youtube.com/watch?v=TH9VCN6UkyQ&list=PLmV5I2fxaiCKfxMBrNsU1kgKJXD3PkyxO) programming language.
