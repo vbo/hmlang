@@ -2,11 +2,6 @@ set -e
 
 exe() { echo "\$ $@" ; "$@" ; }
 
-# opt-3.7 -O3 example.ll -S -o example.ll.opt
-# llc-3.7 example.ll.opt -filetype obj -relocation-model pic -march x86 -o build/example
-
-
-
 CLANGXX="/usr/local/opt/llvm37/bin/clang++-3.7"
 CLANG="/usr/local/opt/llvm37/bin/clang-3.7"
 LLC="/usr/local/opt/llvm37/bin/llc-3.7"

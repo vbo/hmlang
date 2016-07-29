@@ -11,7 +11,6 @@ proc get_entity_pos(e: Entity) -> Vector2 { ret e.pos; }
 type Vector2 { x: float32; y: float32; }
 type Entity { id: s32; pos: Vector2; }
 
-
 proc with_nested() -> s32 {
     // Procedure body defines a scope of it's own, so you can
     // define local (nested) procedures and types.
@@ -31,9 +30,8 @@ proc with_nested() -> s32 {
     ret more_nested();
 }
 
-// TODO: loops
 proc stuff(a: float32, r: float32, v: Vector2) -> Vector2 {
-    // Procedure body may contain statements
+    // Procedure body may contain several kinds of statements:
 
     // 1) Variable declarations...
     x : s32;
@@ -57,7 +55,21 @@ proc stuff(a: float32, r: float32, v: Vector2) -> Vector2 {
     r = add(v.y, 42.0);
     v.y = add(v.x, r);
 
-    // 3) Return statement, with explicit return value. Even void must be specified.
+    // 3) Basic control flow
+    if x > 0 {
+        v.x = 42.0;
+    } else {
+        i : float32;
+        repeat {
+            if i > v.y {
+                break;
+            }
+            i = i + 7.0;
+        }
+        v.y = i;
+    }
+
+    // 4) Return statement, with explicit return value. Even void must be specified.
     ret v;
 
     // You can just put your tiny local helper procedures after the last return,
